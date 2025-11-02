@@ -20,6 +20,8 @@ import re
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import boto3
+from botocore.exceptions import NoCredentialsError, ClientError
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +31,20 @@ DEFAULT_PASSWORD = os.getenv("DEFAULT_PASSWORD", "Default@123")
 
 # API base URL
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+S3_BUCKET = os.getenv("S3_BUCKET", "saving-api-photos")
+
+# Initialize S3 client
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
 
 # Upload directory
 UPLOAD_DIR = Path("uploads/profile_photos")
