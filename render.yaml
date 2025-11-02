@@ -13,3 +13,11 @@ services:
         generateValue: true
       - key: DEFAULT_PASSWORD
         value: Default@123
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: eu-west-1
+      - key: S3_BUCKET
+        value: saving-api-photos

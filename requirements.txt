@@ -8,3 +8,4 @@ psycopg2-binary
 passlib[argon2]
 python-jose[cryptography]
 python-dotenv
+boto3
