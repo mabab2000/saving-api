@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request, Form, HTTPException, status, Depends, Uplo
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, ForeignKey
 from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -46,10 +47,6 @@ s3_client = boto3.client(
     region_name=AWS_REGION
 )
 
-# Upload directory
-UPLOAD_DIR = Path("uploads/profile_photos")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -68,11 +65,63 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+# S3 Upload Helper Functions
+def upload_file_to_s3(file_content: bytes, file_name: str, content_type: str) -> str:
+    """
+    Upload file to S3 and return the S3 key (file path)
+    """
+    try:
+        # Upload file to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=file_name,
+            Body=file_content,
+            ContentType=content_type
+        )
+        
+        # Return the S3 key (we'll generate pre-signed URLs when needed)
+        return file_name
+        
+    except NoCredentialsError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AWS credentials not found"
+        )
+    except ClientError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading to S3: {str(e)}"
+        )
+
+def generate_presigned_url(s3_key: str, expiration: int = 604800) -> str:
+    """
+    Generate a pre-signed URL for accessing an S3 object
+    Default expiration: 604800 seconds = 7 days
+    """
+    try:
+        response = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': S3_BUCKET, 'Key': s3_key},
+            ExpiresIn=expiration
+        )
+        return response
+    except ClientError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating pre-signed URL: {str(e)}"
+        )
+
 app = FastAPI(title="Saving Management System API",
              description="API for managing savings and user authentication")
 
-# Mount uploads directory for static file access
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 # Database Models
 class User(Base):
@@ -607,17 +656,16 @@ async def upload_profile_photo(
         
         # Generate unique filename
         unique_filename = f"{user_uuid}{file_ext}"
-        file_path = UPLOAD_DIR / unique_filename
         
-        # Save the file
+        # Upload to S3
         try:
             contents = await photo.read()
-            with open(file_path, "wb") as f:
-                f.write(contents)
+            content_type = photo.content_type or "image/jpeg"
+            s3_key = upload_file_to_s3(contents, unique_filename, content_type)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error saving file: {str(e)}"
+                detail=f"Error uploading file to S3: {str(e)}"
             )
         
         # Check if profile photo already exists for this user
@@ -625,7 +673,7 @@ async def upload_profile_photo(
         
         if existing_photo:
             # Update existing photo
-            existing_photo.photo = str(file_path)
+            existing_photo.photo = s3_key
             existing_photo.updated_at = datetime.utcnow()
             db.commit()
             db.refresh(existing_photo)
@@ -643,7 +691,7 @@ async def upload_profile_photo(
             # Create new profile photo entry
             db_photo = ProfilePhoto(
                 user_id=user_uuid,
-                photo=str(file_path)
+                photo=s3_key
             )
             
             db.add(db_photo)
@@ -704,10 +752,8 @@ async def get_home_info(user_id: str, db: Session = Depends(get_db)):
         profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
         image_preview_link = None
         if profile_photo:
-            # Convert file path to URL
-            # Remove the uploads/ prefix and construct full URL
-            photo_filename = Path(profile_photo.photo).name
-            image_preview_link = f"{API_BASE_URL}/uploads/profile_photos/{photo_filename}"
+            # Generate pre-signed URL for the S3 object
+            image_preview_link = generate_presigned_url(profile_photo.photo)
         
         # Calculate total savings
         total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
