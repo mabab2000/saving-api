@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: saving-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: API_BASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEFAULT_PASSWORD
+        value: Default@123
