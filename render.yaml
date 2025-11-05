@@ -1,7 +1,7 @@
 services:
   - type: web
     name: saving-api
-    env: docker
+    runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /
@@ -24,3 +24,8 @@ services:
         value: eu-west-1
       - key: S3_BUCKET
         value: saving-api-photos
+
+databases:
+  - name: saving-7jm4
+    databaseName: saving_7jm4
+    user: saving_7jm4_user
