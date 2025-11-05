@@ -3,16 +3,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
 import uvicorn
+import os
 
-# Import routers
-from routers import auth, savings, loans, penalties, users, dashboard
-
-# Load environment variables
+# Load environment variables first
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import routers (after loading env vars)
+try:
+    from routers import auth, savings, loans, penalties, users, dashboard
+    logger.info("All routers imported successfully")
+except Exception as e:
+    logger.error(f"Failed to import routers: {str(e)}")
+    raise
 
 # Create FastAPI app
 app = FastAPI(
@@ -20,6 +26,18 @@ app = FastAPI(
     description="API for managing savings and user authentication",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Startup event to verify database connection"""
+    try:
+        from database import engine
+        # Test database connection
+        with engine.connect() as conn:
+            logger.info("Database connection verified successfully")
+    except Exception as e:
+        logger.error(f"Database connection failed during startup: {str(e)}")
+        raise
 
 # Add CORS middleware
 app.add_middleware(
