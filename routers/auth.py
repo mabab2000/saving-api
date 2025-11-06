@@ -75,17 +75,13 @@ async def api_login_by_id(user_data: UserLoginById, db: Session = Depends(get_db
 @router.post("/login", response_model=TokenWithUserInfo)
 async def api_login(user_data: UserLogin, db: Session = Depends(get_db)):
     """
-    Standard login endpoint - Login with username/email and password
+    Standard login endpoint - Login with email and password
     """
-    # Try to find user by username or email
-    user = db.query(User).filter(
-        (User.username == user_data.user_id) | (User.email == user_data.user_id)
-    ).first()
-    
+    user = db.query(User).filter(User.email == user_data.email).first()
     if not user or not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user ID or password"
+            detail="Invalid email or password"
         )
     access_token = create_access_token(data={"sub": user.username})
     return {

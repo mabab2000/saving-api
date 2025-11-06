@@ -7,7 +7,7 @@ class UserLoginById(BaseModel):
     user_id: str  # UUID as string
 
 class UserLogin(BaseModel):
-    user_id: str  # Can be username or email
+    email: str
     password: str
 
 class UserSignup(BaseModel):
