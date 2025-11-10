@@ -14,7 +14,13 @@ logger = logging.getLogger(__name__)
 
 # Import routers (after loading env vars)
 try:
-    from routers import auth, savings, loans, penalties, users, dashboard, stats_ws
+    from routers.auth import router as auth_router
+    from routers.savings import router as savings_router
+    from routers.loans import router as loans_router
+    from routers.penalties import router as penalties_router
+    from routers.users import router as users_router
+    from routers.dashboard import router as dashboard_router
+    from routers.stats_ws import router as stats_ws_router
     logger.info("All routers imported successfully")
 except Exception as e:
     logger.error(f"Failed to import routers: {str(e)}")
@@ -49,14 +55,14 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/api", tags=["Authentication"])
-app.include_router(savings.router, prefix="/api", tags=["Savings"])
-app.include_router(loans.router, prefix="/api", tags=["Loans"])
-app.include_router(penalties.router, prefix="/api", tags=["Penalties"])
-app.include_router(users.router, prefix="/api", tags=["Users"])
-app.include_router(dashboard.router, prefix="/api", tags=["Dashboard"])
+app.include_router(auth_router, prefix="/api", tags=["Authentication"])
+app.include_router(savings_router, prefix="/api", tags=["Savings"])
+app.include_router(loans_router, prefix="/api", tags=["Loans"])
+app.include_router(penalties_router, prefix="/api", tags=["Penalties"])
+app.include_router(users_router, prefix="/api", tags=["Users"])
+app.include_router(dashboard_router, prefix="/api", tags=["Dashboard"])
 # WebSocket stats router (exposes /ws/stats)
-app.include_router(stats_ws.router)
+app.include_router(stats_ws_router)
 
 @app.get("/")
 async def root():
