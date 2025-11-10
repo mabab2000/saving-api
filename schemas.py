@@ -156,3 +156,31 @@ class DashboardResponse(BaseModel):
     total_saving: float
     total_loan: float  # Current loan balance (total loans - total payments)
     total_penalties: float
+
+# User response/update schemas
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    phone_number: str
+
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    username: str | None = None
+    email: str | None = None
+    phone_number: str | None = None
+    password: str | None = None
+
+# Loan update schema
+class LoanUpdate(BaseModel):
+    amount: float | None = None
+    issued_date: datetime | None = None
+    deadline: datetime | None = None
+
+# Penalty update schema
+class PenaltyUpdate(BaseModel):
+    reason: str | None = None
+    amount: float | None = None
+    status: str | None = None

@@ -8,9 +8,11 @@ import uuid
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
-from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo
+from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate
 from database import get_db
 from s3_utils import upload_file_to_s3, generate_presigned_url
+from .auth import get_password_hash
+from fastapi import Body
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -195,3 +197,94 @@ async def get_home_info(user_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching home info: {str(e)}"
         )
+
+
+# Admin: list all users
+@router.get("/users", response_model=list[UserResponse])
+async def list_users(db: Session = Depends(get_db)):
+    try:
+        users = db.query(User).all()
+        return [
+            UserResponse(
+                id=str(u.id),
+                username=u.username,
+                email=u.email,
+                phone_number=u.phone_number,
+            )
+            for u in users
+        ]
+    except Exception as e:
+        logger.error(f"Error listing users: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# Admin: update a user
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(user_id: str, payload: UserUpdate = Body(...), db: Session = Depends(get_db)):
+    try:
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
+
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        # Check uniqueness when updating username/email/phone
+        if payload.username and payload.username != user.username:
+            existing = db.query(User).filter(User.username == payload.username).first()
+            if existing:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
+            user.username = payload.username
+
+        if payload.email and payload.email != user.email:
+            existing = db.query(User).filter(User.email == payload.email).first()
+            if existing:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already taken")
+            user.email = payload.email
+
+        if payload.phone_number and payload.phone_number != user.phone_number:
+            existing = db.query(User).filter(User.phone_number == payload.phone_number).first()
+            if existing:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone number already taken")
+            user.phone_number = payload.phone_number
+
+        if payload.password:
+            user.hashed_password = get_password_hash(payload.password)
+
+        db.commit()
+        db.refresh(user)
+
+        return UserResponse(id=str(user.id), username=user.username, email=user.email, phone_number=user.phone_number)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# Admin: delete a user
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, db: Session = Depends(get_db)):
+    try:
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
+
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        # Attempt to delete user (may fail if FK constraints exist)
+        db.delete(user)
+        db.commit()
+        return {"message": "User deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

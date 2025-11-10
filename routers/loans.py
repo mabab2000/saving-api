@@ -5,8 +5,17 @@ import traceback
 import uuid
 
 from models import User, Loan, LoanPayment
-from schemas import LoanCreate, LoanResponse, LoanSummary, LoanPaymentCreate, LoanPaymentResponse, LoanPaymentSummary
+from schemas import (
+    LoanCreate,
+    LoanResponse,
+    LoanSummary,
+    LoanPaymentCreate,
+    LoanPaymentResponse,
+    LoanPaymentSummary,
+    LoanUpdate,
+)
 from database import get_db
+from fastapi import Body
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -265,3 +274,97 @@ async def get_loan_payments(loan_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching loan payments: {str(e)}"
         )
+
+
+# Admin: list all loans
+@router.get("/loans", response_model=LoanSummary)
+async def list_all_loans(db: Session = Depends(get_db)):
+    try:
+        loans = db.query(Loan).order_by(Loan.created_at.desc()).all()
+        total_amount = sum(loan.amount for loan in loans)
+        total_loan = len(loans)
+        loan_responses = [
+            LoanResponse(
+                id=str(loan.id),
+                user_id=str(loan.user_id),
+                amount=loan.amount,
+                issued_date=loan.issued_date,
+                deadline=loan.deadline,
+                created_at=loan.created_at,
+                updated_at=loan.updated_at,
+            )
+            for loan in loans
+        ]
+        return LoanSummary(total_amount=total_amount, total_loan=total_loan, loans=loan_responses)
+    except Exception as e:
+        logger.error(f"Error listing all loans: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# Admin: update a loan
+@router.put("/loan/{loan_id}", response_model=LoanResponse)
+async def update_loan(loan_id: str, payload: LoanUpdate = Body(...), db: Session = Depends(get_db)):
+    try:
+        try:
+            loan_uuid = uuid.UUID(loan_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid loan ID format")
+
+        loan = db.query(Loan).filter(Loan.id == loan_uuid).first()
+        if not loan:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
+
+        if payload.amount is not None:
+            loan.amount = payload.amount
+        if payload.issued_date is not None:
+            loan.issued_date = payload.issued_date
+        if payload.deadline is not None:
+            if payload.issued_date and payload.deadline <= payload.issued_date:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deadline must be after issued date")
+            loan.deadline = payload.deadline
+
+        db.commit()
+        db.refresh(loan)
+
+        return LoanResponse(
+            id=str(loan.id),
+            user_id=str(loan.user_id),
+            amount=loan.amount,
+            issued_date=loan.issued_date,
+            deadline=loan.deadline,
+            created_at=loan.created_at,
+            updated_at=loan.updated_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating loan: {e}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# Admin: delete a loan and its payments
+@router.delete("/loan/{loan_id}")
+async def delete_loan(loan_id: str, db: Session = Depends(get_db)):
+    try:
+        try:
+            loan_uuid = uuid.UUID(loan_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid loan ID format")
+
+        loan = db.query(Loan).filter(Loan.id == loan_uuid).first()
+        if not loan:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
+
+        # Delete associated payments first
+        db.query(LoanPayment).filter(LoanPayment.loan_id == loan_uuid).delete()
+        db.delete(loan)
+        db.commit()
+
+        return {"message": "Loan and associated payments deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting loan: {e}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

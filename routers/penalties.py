@@ -5,7 +5,8 @@ import traceback
 import uuid
 
 from models import User, Penalty
-from schemas import PenaltyCreate, PenaltyResponse, PenaltySummary
+from schemas import PenaltyCreate, PenaltyResponse, PenaltySummary, PenaltyUpdate
+from fastapi import Body
 from database import get_db
 
 router = APIRouter()
@@ -131,3 +132,94 @@ async def get_user_penalties(user_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching penalties: {str(e)}"
         )
+
+
+# Admin: list all penalties
+@router.get("/penalties", response_model=PenaltySummary)
+async def list_all_penalties(db: Session = Depends(get_db)):
+    try:
+        penalties = db.query(Penalty).order_by(Penalty.created_at.desc()).all()
+        total_paid = sum(p.amount for p in penalties if p.status.lower() == "paid")
+        total_unpaid = sum(p.amount for p in penalties if p.status.lower() == "unpaid")
+
+        penalty_responses = [
+            PenaltyResponse(
+                id=str(p.id),
+                user_id=str(p.user_id),
+                reason=p.reason,
+                amount=p.amount,
+                status=p.status,
+                created_at=p.created_at,
+                updated_at=p.updated_at,
+            )
+            for p in penalties
+        ]
+
+        return PenaltySummary(total_paid=total_paid, total_unpaid=total_unpaid, penalties=penalty_responses)
+    except Exception as e:
+        logger.error(f"Error listing all penalties: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# Admin: update a penalty
+@router.put("/penalty/{penalty_id}", response_model=PenaltyResponse)
+async def update_penalty(penalty_id: str, payload: PenaltyUpdate = Body(...), db: Session = Depends(get_db)):
+    try:
+        try:
+            penalty_uuid = uuid.UUID(penalty_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid penalty ID format")
+
+        penalty = db.query(Penalty).filter(Penalty.id == penalty_uuid).first()
+        if not penalty:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Penalty not found")
+
+        if payload.reason is not None:
+            penalty.reason = payload.reason
+        if payload.amount is not None:
+            penalty.amount = payload.amount
+        if payload.status is not None:
+            penalty.status = payload.status
+
+        db.commit()
+        db.refresh(penalty)
+
+        return PenaltyResponse(
+            id=str(penalty.id),
+            user_id=str(penalty.user_id),
+            reason=penalty.reason,
+            amount=penalty.amount,
+            status=penalty.status,
+            created_at=penalty.created_at,
+            updated_at=penalty.updated_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating penalty: {e}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# Admin: delete a penalty
+@router.delete("/penalty/{penalty_id}")
+async def delete_penalty(penalty_id: str, db: Session = Depends(get_db)):
+    try:
+        try:
+            penalty_uuid = uuid.UUID(penalty_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid penalty ID format")
+
+        penalty = db.query(Penalty).filter(Penalty.id == penalty_uuid).first()
+        if not penalty:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Penalty not found")
+
+        db.delete(penalty)
+        db.commit()
+        return {"message": "Penalty deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting penalty: {e}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
