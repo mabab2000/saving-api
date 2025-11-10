@@ -5,7 +5,9 @@ import traceback
 import uuid
 
 from models import User, Saving
-from schemas import SavingCreate, SavingResponse, SavingSummary
+from schemas import SavingCreate, SavingResponse, SavingSummary, SavingUpdate
+from fastapi import Body
+import datetime
 from database import get_db
 
 router = APIRouter()
@@ -123,3 +125,58 @@ async def get_user_savings(user_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching savings: {str(e)}"
         )
+
+
+# Admin: update a saving record
+@router.put("/saving/{saving_id}", response_model=SavingResponse)
+async def update_saving(saving_id: str, payload: SavingUpdate = Body(...), db: Session = Depends(get_db)):
+    try:
+        try:
+            saving_uuid = uuid.UUID(saving_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid saving ID format")
+
+        saving = db.query(Saving).filter(Saving.id == saving_uuid).first()
+        if not saving:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saving not found")
+
+        if payload.amount is not None:
+            if payload.amount <= 0:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be greater than 0")
+            saving.amount = payload.amount
+
+        # Optionally update created_at if provided in future extensions
+        db.commit()
+        db.refresh(saving)
+
+        return SavingResponse(id=str(saving.id), user_id=str(saving.user_id), amount=saving.amount, created_at=saving.created_at)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating saving: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error updating saving: {str(e)}")
+
+
+# Admin: delete a saving record
+@router.delete("/saving/{saving_id}")
+async def delete_saving(saving_id: str, db: Session = Depends(get_db)):
+    try:
+        try:
+            saving_uuid = uuid.UUID(saving_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid saving ID format")
+
+        saving = db.query(Saving).filter(Saving.id == saving_uuid).first()
+        if not saving:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saving not found")
+
+        db.delete(saving)
+        db.commit()
+        return {"message": "Saving deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting saving: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error deleting saving: {str(e)}")

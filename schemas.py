@@ -57,6 +57,10 @@ class SavingSummary(BaseModel):
     total_saving: int
     savings: list[SavingResponse]
 
+# Saving update schema
+class SavingUpdate(BaseModel):
+    amount: float | None = None
+
 # Loan Schemas
 class LoanCreate(BaseModel):
     user_id: str  # UUID as string
