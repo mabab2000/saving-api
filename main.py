@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Import routers (after loading env vars)
 try:
-    from routers import auth, savings, loans, penalties, users, dashboard
+    from routers import auth, savings, loans, penalties, users, dashboard, stats_ws
     logger.info("All routers imported successfully")
 except Exception as e:
     logger.error(f"Failed to import routers: {str(e)}")
@@ -55,6 +55,8 @@ app.include_router(loans.router, prefix="/api", tags=["Loans"])
 app.include_router(penalties.router, prefix="/api", tags=["Penalties"])
 app.include_router(users.router, prefix="/api", tags=["Users"])
 app.include_router(dashboard.router, prefix="/api", tags=["Dashboard"])
+# WebSocket stats router (exposes /ws/stats)
+app.include_router(stats_ws.router)
 
 @app.get("/")
 async def root():
@@ -76,4 +78,8 @@ async def root():
     }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # In production or CI we start the server without auto-reload to avoid
+    # multiple processes trying to bind the same port (Windows socket error 10048).
+    # For development with live-reload use the CLI: `uvicorn main:app --reload`
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
