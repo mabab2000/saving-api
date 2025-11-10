@@ -47,6 +47,8 @@ class SavingResponse(BaseModel):
     id: str
     user_id: str
     amount: float
+    username: str | None = None
+    phone_number: str | None = None
     created_at: datetime
     
     class Config:

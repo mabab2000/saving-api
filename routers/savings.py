@@ -53,6 +53,8 @@ async def create_saving(saving_data: SavingCreate, db: Session = Depends(get_db)
             id=str(db_saving.id),
             user_id=str(db_saving.user_id),
             amount=db_saving.amount,
+            username=user.username if user else None,
+            phone_number=user.phone_number if user else None,
             created_at=db_saving.created_at
         )
         
@@ -100,15 +102,27 @@ async def get_user_savings(user_id: str, db: Session = Depends(get_db)):
         
         logger.info(f"Found {total_saving} savings for user: {user_id} (Total: {total_amount})")
         
-        saving_responses = [
-            SavingResponse(
-                id=str(saving.id),
-                user_id=str(saving.user_id),
-                amount=saving.amount,
-                created_at=saving.created_at
+        saving_responses = []
+        for saving in savings:
+            # try to fetch user info for this saving
+            try:
+                user_obj = db.query(User).filter(User.id == saving.user_id).first()
+                username = user_obj.username if user_obj else None
+                phone = user_obj.phone_number if user_obj else None
+            except Exception:
+                username = None
+                phone = None
+
+            saving_responses.append(
+                SavingResponse(
+                    id=str(saving.id),
+                    user_id=str(saving.user_id),
+                    amount=saving.amount,
+                    username=username,
+                    phone_number=phone,
+                    created_at=saving.created_at
+                )
             )
-            for saving in savings
-        ]
         
         return SavingSummary(
             total_amount=total_amount,
@@ -139,15 +153,26 @@ async def list_all_savings(db: Session = Depends(get_db)):
         total_amount = sum(saving.amount for saving in savings)
         total_saving = len(savings)
 
-        saving_responses = [
-            SavingResponse(
-                id=str(saving.id),
-                user_id=str(saving.user_id),
-                amount=saving.amount,
-                created_at=saving.created_at
+        saving_responses = []
+        for saving in savings:
+            try:
+                user_obj = db.query(User).filter(User.id == saving.user_id).first()
+                username = user_obj.username if user_obj else None
+                phone = user_obj.phone_number if user_obj else None
+            except Exception:
+                username = None
+                phone = None
+
+            saving_responses.append(
+                SavingResponse(
+                    id=str(saving.id),
+                    user_id=str(saving.user_id),
+                    amount=saving.amount,
+                    username=username,
+                    phone_number=phone,
+                    created_at=saving.created_at
+                )
             )
-            for saving in savings
-        ]
 
         return SavingSummary(
             total_amount=total_amount,
@@ -181,7 +206,23 @@ async def update_saving(saving_id: str, payload: SavingUpdate = Body(...), db: S
         db.commit()
         db.refresh(saving)
 
-        return SavingResponse(id=str(saving.id), user_id=str(saving.user_id), amount=saving.amount, created_at=saving.created_at)
+        # include user info
+        try:
+            user_obj = db.query(User).filter(User.id == saving.user_id).first()
+            username = user_obj.username if user_obj else None
+            phone = user_obj.phone_number if user_obj else None
+        except Exception:
+            username = None
+            phone = None
+
+        return SavingResponse(
+            id=str(saving.id),
+            user_id=str(saving.user_id),
+            amount=saving.amount,
+            username=username,
+            phone_number=phone,
+            created_at=saving.created_at,
+        )
     except HTTPException:
         raise
     except Exception as e:
