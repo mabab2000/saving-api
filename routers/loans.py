@@ -72,7 +72,9 @@ async def create_loan(loan_data: LoanCreate, db: Session = Depends(get_db)):
             issued_date=db_loan.issued_date,
             deadline=db_loan.deadline,
             created_at=db_loan.created_at,
-            updated_at=db_loan.updated_at
+            updated_at=db_loan.updated_at,
+            username=user.username if user else None,
+            phone_number=user.phone_number if user else None,
         )
         
     except HTTPException:
@@ -127,7 +129,9 @@ async def get_user_loans(user_id: str, db: Session = Depends(get_db)):
                 issued_date=loan.issued_date,
                 deadline=loan.deadline,
                 created_at=loan.created_at,
-                updated_at=loan.updated_at
+                updated_at=loan.updated_at,
+                username=user.username if user else None,
+                phone_number=user.phone_number if user else None,
             )
             for loan in loans
         ]
@@ -283,18 +287,29 @@ async def list_all_loans(db: Session = Depends(get_db)):
         loans = db.query(Loan).order_by(Loan.created_at.desc()).all()
         total_amount = sum(loan.amount for loan in loans)
         total_loan = len(loans)
-        loan_responses = [
-            LoanResponse(
-                id=str(loan.id),
-                user_id=str(loan.user_id),
-                amount=loan.amount,
-                issued_date=loan.issued_date,
-                deadline=loan.deadline,
-                created_at=loan.created_at,
-                updated_at=loan.updated_at,
+        loan_responses = []
+        for loan in loans:
+            try:
+                user_obj = db.query(User).filter(User.id == loan.user_id).first()
+                username = user_obj.username if user_obj else None
+                phone = user_obj.phone_number if user_obj else None
+            except Exception:
+                username = None
+                phone = None
+
+            loan_responses.append(
+                LoanResponse(
+                    id=str(loan.id),
+                    user_id=str(loan.user_id),
+                    amount=loan.amount,
+                    issued_date=loan.issued_date,
+                    deadline=loan.deadline,
+                    created_at=loan.created_at,
+                    updated_at=loan.updated_at,
+                    username=username,
+                    phone_number=phone,
+                )
             )
-            for loan in loans
-        ]
         return LoanSummary(total_amount=total_amount, total_loan=total_loan, loans=loan_responses)
     except Exception as e:
         logger.error(f"Error listing all loans: {e}")

@@ -78,6 +78,8 @@ class LoanResponse(BaseModel):
     deadline: datetime
     created_at: datetime
     updated_at: datetime
+    username: str | None = None
+    phone_number: str | None = None
     
     class Config:
         from_attributes = True
