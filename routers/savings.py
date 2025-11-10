@@ -127,6 +127,38 @@ async def get_user_savings(user_id: str, db: Session = Depends(get_db)):
         )
 
 
+# Admin: list all savings
+@router.get("/savings", response_model=SavingSummary)
+async def list_all_savings(db: Session = Depends(get_db)):
+    """
+    Get all savings across all users with total amount and count
+    """
+    try:
+        savings = db.query(Saving).order_by(Saving.created_at.desc()).all()
+
+        total_amount = sum(saving.amount for saving in savings)
+        total_saving = len(savings)
+
+        saving_responses = [
+            SavingResponse(
+                id=str(saving.id),
+                user_id=str(saving.user_id),
+                amount=saving.amount,
+                created_at=saving.created_at
+            )
+            for saving in savings
+        ]
+
+        return SavingSummary(
+            total_amount=total_amount,
+            total_saving=total_saving,
+            savings=saving_responses
+        )
+    except Exception as e:
+        logger.error(f"Error listing all savings: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 # Admin: update a saving record
 @router.put("/saving/{saving_id}", response_model=SavingResponse)
 async def update_saving(saving_id: str, payload: SavingUpdate = Body(...), db: Session = Depends(get_db)):
