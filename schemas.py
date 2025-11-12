@@ -192,3 +192,15 @@ class PenaltyUpdate(BaseModel):
     reason: str | None = None
     amount: float | None = None
     status: str | None = None
+
+
+# Member listing schema (for admin or public members list)
+class MemberResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    phone_number: str | None = None
+    image_preview_link: str | None = None
+
+    class Config:
+        from_attributes = True

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
-from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate
+from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse
 from database import get_db
 from s3_utils import upload_file_to_s3, generate_presigned_url
 from .auth import get_password_hash
@@ -197,6 +197,38 @@ async def get_home_info(user_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching home info: {str(e)}"
         )
+
+
+# Public/Admin: list members with basic info and profile image link
+@router.get("/members", response_model=list[MemberResponse])
+async def list_members(db: Session = Depends(get_db)):
+    try:
+        users = db.query(User).order_by(User.username.asc()).all()
+        members = []
+        for u in users:
+            # find profile photo
+            profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == u.id).first()
+            image_preview_link = None
+            if profile_photo:
+                try:
+                    image_preview_link = generate_presigned_url(profile_photo.photo)
+                except Exception:
+                    image_preview_link = None
+
+            members.append(
+                MemberResponse(
+                    id=str(u.id),
+                    username=u.username,
+                    email=u.email,
+                    phone_number=u.phone_number,
+                    image_preview_link=image_preview_link,
+                )
+            )
+
+        return members
+    except Exception as e:
+        logger.error(f"Error listing members: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # Admin: list all users
