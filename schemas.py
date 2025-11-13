@@ -123,6 +123,13 @@ class ProfilePhotoResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ProfilePhotoURLResponse(BaseModel):
+    image_preview_link: str | None = None
+
+    class Config:
+        from_attributes = True
+
 # Penalty Schemas
 class PenaltyCreate(BaseModel):
     user_id: str  # UUID as string
