@@ -62,7 +62,7 @@ class SavingSummary(BaseModel):
 # Saving update schema
 class SavingUpdate(BaseModel):
     amount: float | None = None
-    add: bool = False  # if true, add the amount to existing saving instead of replacing
+    created_at: datetime | None = None
 
 # Loan Schemas
 class LoanCreate(BaseModel):
@@ -123,13 +123,6 @@ class ProfilePhotoResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
-class ProfilePhotoURLResponse(BaseModel):
-    image_preview_link: str | None = None
-
-    class Config:
-        from_attributes = True
-
 # Penalty Schemas
 class PenaltyCreate(BaseModel):
     user_id: str  # UUID as string
@@ -140,7 +133,6 @@ class PenaltyCreate(BaseModel):
 class PenaltyResponse(BaseModel):
     id: str
     user_id: str
-    username: str | None = None
     reason: str
     amount: float
     status: str
@@ -180,7 +172,6 @@ class UserResponse(BaseModel):
     username: str
     email: str
     phone_number: str
-    total_saving: float = 0.0
 
     class Config:
         from_attributes = True
@@ -211,7 +202,6 @@ class MemberResponse(BaseModel):
     email: str
     phone_number: str | None = None
     image_preview_link: str | None = None
-    shares: int = 0
 
     class Config:
         from_attributes = True

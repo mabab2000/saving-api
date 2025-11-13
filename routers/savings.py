@@ -200,16 +200,16 @@ async def update_saving(saving_id: str, payload: SavingUpdate = Body(...), db: S
         if payload.amount is not None:
             if payload.amount <= 0:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be greater than 0")
-            # If add flag is set, increment the existing amount instead of replacing
-            if getattr(payload, 'add', False):
-                try:
-                    saving.amount = float(saving.amount) + float(payload.amount)
-                except Exception:
-                    saving.amount = payload.amount
-            else:
-                saving.amount = payload.amount
+            saving.amount = payload.amount
 
-        # Optionally update created_at if provided in future extensions
+        # Optionally update created_at if provided in the payload
+        if getattr(payload, 'created_at', None) is not None:
+            try:
+                # payload.created_at should already be a datetime from Pydantic
+                saving.created_at = payload.created_at
+            except Exception:
+                # ignore invalid values
+                pass
         db.commit()
         db.refresh(saving)
 
