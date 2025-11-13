@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
-from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse
+from schemas import ProfilePhotoResponse, ProfilePhotoURLResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse
 from database import get_db
 from s3_utils import upload_file_to_s3, generate_presigned_url
 from .auth import get_password_hash
@@ -120,6 +120,34 @@ async def upload_profile_photo(
             detail=f"Error uploading profile photo: {str(e)}"
         )
 
+
+@router.get("/profile-photo/{user_id}", response_model=ProfilePhotoURLResponse)
+async def get_profile_photo(user_id: str, db: Session = Depends(get_db)):
+    """
+    Return a pre-signed image URL for the user's profile photo (or null if none).
+    """
+    try:
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
+
+        profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
+        if not profile_photo:
+            return ProfilePhotoURLResponse(image_preview_link=None)
+
+        try:
+            url = generate_presigned_url(profile_photo.photo)
+        except Exception:
+            url = None
+
+        return ProfilePhotoURLResponse(image_preview_link=url)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching profile photo URL: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
 @router.websocket("/home/{user_id}")
 async def websocket_home_info(websocket: WebSocket, user_id: str):
     """
@@ -146,15 +174,6 @@ async def websocket_home_info(websocket: WebSocket, user_id: str):
             await websocket.close(code=1008)
             return
 
-        # Get profile photo
-        profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
-        image_preview_link = None
-        if profile_photo:
-            try:
-                image_preview_link = generate_presigned_url(profile_photo.photo)
-            except Exception:
-                image_preview_link = None
-
         # Calculate total savings
         total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
 
@@ -180,7 +199,6 @@ async def websocket_home_info(websocket: WebSocket, user_id: str):
 
         payload = {
             "user_id": str(user_uuid),
-            "image_preview_link": image_preview_link,
             "total_saving": float(total_saving),
             "total_loan": float(current_loan),
             "latest_saving_info": latest_saving_info,
