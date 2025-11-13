@@ -171,6 +171,7 @@ class UserResponse(BaseModel):
     username: str
     email: str
     phone_number: str
+    total_saving: float = 0.0
 
     class Config:
         from_attributes = True
@@ -201,6 +202,7 @@ class MemberResponse(BaseModel):
     email: str
     phone_number: str | None = None
     image_preview_link: str | None = None
+    shares: int = 0
 
     class Config:
         from_attributes = True

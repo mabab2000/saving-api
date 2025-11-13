@@ -215,6 +215,18 @@ async def list_members(db: Session = Depends(get_db)):
                 except Exception:
                     image_preview_link = None
 
+            # calculate total saving for the user and derive shares (1 share = 2000 units)
+            try:
+                total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == u.id).scalar() or 0.0
+            except Exception:
+                total_saving = 0.0
+
+            # number of shares: floor division
+            try:
+                shares = int(total_saving // 2000)
+            except Exception:
+                shares = 0
+
             members.append(
                 MemberResponse(
                     id=str(u.id),
@@ -222,6 +234,7 @@ async def list_members(db: Session = Depends(get_db)):
                     email=u.email,
                     phone_number=u.phone_number,
                     image_preview_link=image_preview_link,
+                    shares=shares,
                 )
             )
 
@@ -236,15 +249,24 @@ async def list_members(db: Session = Depends(get_db)):
 async def list_users(db: Session = Depends(get_db)):
     try:
         users = db.query(User).all()
-        return [
-            UserResponse(
-                id=str(u.id),
-                username=u.username,
-                email=u.email,
-                phone_number=u.phone_number,
+        result = []
+        for u in users:
+            try:
+                total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == u.id).scalar() or 0.0
+            except Exception:
+                total_saving = 0.0
+
+            result.append(
+                UserResponse(
+                    id=str(u.id),
+                    username=u.username,
+                    email=u.email,
+                    phone_number=u.phone_number,
+                    total_saving=float(total_saving),
+                )
             )
-            for u in users
-        ]
+
+        return result
     except Exception as e:
         logger.error(f"Error listing users: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
