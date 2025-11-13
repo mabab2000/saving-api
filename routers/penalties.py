@@ -53,6 +53,7 @@ async def create_penalty(penalty_data: PenaltyCreate, db: Session = Depends(get_
         return PenaltyResponse(
             id=str(db_penalty.id),
             user_id=str(db_penalty.user_id),
+            username=user.username if user else None,
             reason=db_penalty.reason,
             amount=db_penalty.amount,
             status=db_penalty.status,
@@ -108,6 +109,7 @@ async def get_user_penalties(user_id: str, db: Session = Depends(get_db)):
             PenaltyResponse(
                 id=str(penalty.id),
                 user_id=str(penalty.user_id),
+                username=(db.query(User).filter(User.id == penalty.user_id).first().username if db.query(User).filter(User.id == penalty.user_id).first() else None),
                 reason=penalty.reason,
                 amount=penalty.amount,
                 status=penalty.status,
@@ -146,6 +148,7 @@ async def list_all_penalties(db: Session = Depends(get_db)):
             PenaltyResponse(
                 id=str(p.id),
                 user_id=str(p.user_id),
+                username=(db.query(User).filter(User.id == p.user_id).first().username if db.query(User).filter(User.id == p.user_id).first() else None),
                 reason=p.reason,
                 amount=p.amount,
                 status=p.status,
@@ -187,6 +190,7 @@ async def update_penalty(penalty_id: str, payload: PenaltyUpdate = Body(...), db
         return PenaltyResponse(
             id=str(penalty.id),
             user_id=str(penalty.user_id),
+            username=(db.query(User).filter(User.id == penalty.user_id).first().username if db.query(User).filter(User.id == penalty.user_id).first() else None),
             reason=penalty.reason,
             amount=penalty.amount,
             status=penalty.status,

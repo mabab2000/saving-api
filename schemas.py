@@ -62,6 +62,7 @@ class SavingSummary(BaseModel):
 # Saving update schema
 class SavingUpdate(BaseModel):
     amount: float | None = None
+    add: bool = False  # if true, add the amount to existing saving instead of replacing
 
 # Loan Schemas
 class LoanCreate(BaseModel):
@@ -139,6 +140,7 @@ class PenaltyCreate(BaseModel):
 class PenaltyResponse(BaseModel):
     id: str
     user_id: str
+    username: str | None = None
     reason: str
     amount: float
     status: str
