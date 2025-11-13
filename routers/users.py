@@ -236,15 +236,22 @@ async def list_members(db: Session = Depends(get_db)):
 async def list_users(db: Session = Depends(get_db)):
     try:
         users = db.query(User).all()
-        return [
-            UserResponse(
-                id=str(u.id),
-                username=u.username,
-                email=u.email,
-                phone_number=u.phone_number,
+        result: list[UserResponse] = []
+        for u in users:
+            # Calculate total saving for the user
+            total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == u.id).scalar() or 0.0
+
+            result.append(
+                UserResponse(
+                    id=str(u.id),
+                    username=u.username,
+                    email=u.email,
+                    phone_number=u.phone_number,
+                    total_saving=float(total_saving),
+                )
             )
-            for u in users
-        ]
+
+        return result
     except Exception as e:
         logger.error(f"Error listing users: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
