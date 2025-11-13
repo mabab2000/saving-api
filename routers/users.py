@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pathlib import Path
@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
-from schemas import ProfilePhotoResponse, ProfilePhotoURLResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse
+from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse
 from database import get_db
 from s3_utils import upload_file_to_s3, generate_presigned_url
 from .auth import get_password_hash
@@ -120,105 +120,83 @@ async def upload_profile_photo(
             detail=f"Error uploading profile photo: {str(e)}"
         )
 
-
-@router.get("/profile-photo/{user_id}", response_model=ProfilePhotoURLResponse)
-async def get_profile_photo(user_id: str, db: Session = Depends(get_db)):
+@router.get("/home/{user_id}", response_model=HomeResponse)
+async def get_home_info(user_id: str, db: Session = Depends(get_db)):
     """
-    Return a pre-signed image URL for the user's profile photo (or null if none).
+    Get home dashboard information for a user
+    - Image preview link
+    - Total saving
+    - Total loan
+    - Latest saving info (month, year, amount)
     """
     try:
+        logger.info(f"Fetching home info for user_id: {user_id}")
+        
+        # Verify user exists
         try:
             user_uuid = uuid.UUID(user_id)
         except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
-
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid user ID format"
+            )
+        
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Get profile photo
         profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
-        if not profile_photo:
-            return ProfilePhotoURLResponse(image_preview_link=None)
-
-        try:
-            url = generate_presigned_url(profile_photo.photo)
-        except Exception:
-            url = None
-
-        return ProfilePhotoURLResponse(image_preview_link=url)
+        image_preview_link = None
+        if profile_photo:
+            # Generate pre-signed URL for the S3 object
+            image_preview_link = generate_presigned_url(profile_photo.photo)
+        
+        # Calculate total savings
+        total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
+        
+        # Calculate total loans
+        total_loan_amount = db.query(func.sum(Loan.amount)).filter(Loan.user_id == user_uuid).scalar() or 0.0
+        
+        # Calculate total loan payments
+        total_loan_payments = db.query(func.sum(LoanPayment.amount)).filter(LoanPayment.user_id == user_uuid).scalar() or 0.0
+        
+        # Calculate current loan (total loans - total payments)
+        current_loan = total_loan_amount - total_loan_payments
+        
+        # Get latest saving info
+        latest_saving = db.query(Saving).filter(Saving.user_id == user_uuid).order_by(Saving.created_at.desc()).first()
+        
+        latest_saving_info = None
+        if latest_saving:
+            latest_saving_info = LatestSavingInfo(
+                month=latest_saving.created_at.month,
+                year=latest_saving.created_at.year,
+                amount=latest_saving.amount
+            )
+        
+        logger.info(f"Home info retrieved successfully for user: {user_id}")
+        
+        return HomeResponse(
+            user_id=str(user_uuid),
+            image_preview_link=image_preview_link,
+            total_saving=total_saving,
+            total_loan=current_loan,
+            latest_saving_info=latest_saving_info
+        )
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching profile photo URL: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-@router.websocket("/home/{user_id}")
-async def websocket_home_info(websocket: WebSocket, user_id: str):
-    """
-    WebSocket endpoint for providing home dashboard information for a user.
-    Sends a single JSON payload matching HomeResponse then closes the connection.
-    """
-    await websocket.accept()
-    # Lazy import to access SessionLocal (fastapi Depends doesn't work for websockets)
-    from database import SessionLocal
-    db = SessionLocal()
-    try:
-        logger.info(f"WebSocket connection opened for home info user_id: {user_id}")
-
-        try:
-            user_uuid = uuid.UUID(user_id)
-        except ValueError:
-            await websocket.send_json({"error": "Invalid user ID format"})
-            await websocket.close(code=1003)
-            return
-
-        user = db.query(User).filter(User.id == user_uuid).first()
-        if not user:
-            await websocket.send_json({"error": "User not found"})
-            await websocket.close(code=1008)
-            return
-
-        # Calculate total savings
-        total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
-
-        # Calculate total loans
-        total_loan_amount = db.query(func.sum(Loan.amount)).filter(Loan.user_id == user_uuid).scalar() or 0.0
-
-        # Calculate total loan payments
-        total_loan_payments = db.query(func.sum(LoanPayment.amount)).filter(LoanPayment.user_id == user_uuid).scalar() or 0.0
-
-        # Calculate current loan (total loans - total payments)
-        current_loan = total_loan_amount - total_loan_payments
-
-        # Get latest saving info
-        latest_saving = db.query(Saving).filter(Saving.user_id == user_uuid).order_by(Saving.created_at.desc()).first()
-
-        latest_saving_info = None
-        if latest_saving:
-            latest_saving_info = {
-                "month": latest_saving.created_at.month,
-                "year": latest_saving.created_at.year,
-                "amount": latest_saving.amount,
-            }
-
-        payload = {
-            "user_id": str(user_uuid),
-            "total_saving": float(total_saving),
-            "total_loan": float(current_loan),
-            "latest_saving_info": latest_saving_info,
-        }
-
-        await websocket.send_json(payload)
-        await websocket.close()
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for user: {user_id}")
-    except Exception as e:
-        logger.error(f"Error in websocket_home_info: {e}")
+        logger.error(f"Error fetching home info: {str(e)}")
         logger.error(traceback.format_exc())
-        try:
-            await websocket.send_json({"error": "Internal server error"})
-            await websocket.close(code=1011)
-        except Exception:
-            pass
-    finally:
-        db.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching home info: {str(e)}"
+        )
 
 
 # Public/Admin: list members with basic info and profile image link
@@ -237,18 +215,6 @@ async def list_members(db: Session = Depends(get_db)):
                 except Exception:
                     image_preview_link = None
 
-            # calculate total saving for the user and derive shares (1 share = 2000 units)
-            try:
-                total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == u.id).scalar() or 0.0
-            except Exception:
-                total_saving = 0.0
-
-            # number of shares: floor division
-            try:
-                shares = int(total_saving // 2000)
-            except Exception:
-                shares = 0
-
             members.append(
                 MemberResponse(
                     id=str(u.id),
@@ -256,7 +222,6 @@ async def list_members(db: Session = Depends(get_db)):
                     email=u.email,
                     phone_number=u.phone_number,
                     image_preview_link=image_preview_link,
-                    shares=shares,
                 )
             )
 
@@ -271,24 +236,15 @@ async def list_members(db: Session = Depends(get_db)):
 async def list_users(db: Session = Depends(get_db)):
     try:
         users = db.query(User).all()
-        result = []
-        for u in users:
-            try:
-                total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == u.id).scalar() or 0.0
-            except Exception:
-                total_saving = 0.0
-
-            result.append(
-                UserResponse(
-                    id=str(u.id),
-                    username=u.username,
-                    email=u.email,
-                    phone_number=u.phone_number,
-                    total_saving=float(total_saving),
-                )
+        return [
+            UserResponse(
+                id=str(u.id),
+                username=u.username,
+                email=u.email,
+                phone_number=u.phone_number,
             )
-
-        return result
+            for u in users
+        ]
     except Exception as e:
         logger.error(f"Error listing users: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
