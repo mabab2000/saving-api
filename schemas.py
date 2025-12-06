@@ -77,6 +77,8 @@ class LoanResponse(BaseModel):
     amount: float
     issued_date: datetime
     deadline: datetime
+    status: str = "active"
+    total_amount_paid: float = 0.0
     created_at: datetime
     updated_at: datetime
     username: str | None = None

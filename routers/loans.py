@@ -71,6 +71,8 @@ async def create_loan(loan_data: LoanCreate, db: Session = Depends(get_db)):
             amount=db_loan.amount,
             issued_date=db_loan.issued_date,
             deadline=db_loan.deadline,
+            status=db_loan.status,
+            total_amount_paid=0.0,
             created_at=db_loan.created_at,
             updated_at=db_loan.updated_at,
             username=user.username if user else None,
@@ -121,20 +123,25 @@ async def get_user_loans(user_id: str, db: Session = Depends(get_db)):
         
         logger.info(f"Found {total_loan} loans for user: {user_id} (Total: {total_amount})")
         
-        loan_responses = [
-            LoanResponse(
+        loan_responses = []
+        for loan in loans:
+            # Calculate total amount paid for this loan
+            from sqlalchemy import func
+            total_paid = db.query(func.sum(LoanPayment.amount)).filter(LoanPayment.loan_id == loan.id).scalar() or 0.0
+            
+            loan_responses.append(LoanResponse(
                 id=str(loan.id),
                 user_id=str(loan.user_id),
                 amount=loan.amount,
                 issued_date=loan.issued_date,
                 deadline=loan.deadline,
+                status=loan.status,
+                total_amount_paid=float(total_paid),
                 created_at=loan.created_at,
                 updated_at=loan.updated_at,
                 username=user.username if user else None,
                 phone_number=user.phone_number if user else None,
-            )
-            for loan in loans
-        ]
+            ))
         
         return LoanSummary(
             total_amount=total_amount,
@@ -293,9 +300,15 @@ async def list_all_loans(db: Session = Depends(get_db)):
                 user_obj = db.query(User).filter(User.id == loan.user_id).first()
                 username = user_obj.username if user_obj else None
                 phone = user_obj.phone_number if user_obj else None
+                
+                # Calculate total amount paid
+                total_paid = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+                    LoanPayment.loan_id == loan.id
+                ).scalar()
             except Exception:
                 username = None
                 phone = None
+                total_paid = 0
 
             loan_responses.append(
                 LoanResponse(
@@ -308,6 +321,8 @@ async def list_all_loans(db: Session = Depends(get_db)):
                     updated_at=loan.updated_at,
                     username=username,
                     phone_number=phone,
+                    status=loan.status,
+                    total_amount_paid=total_paid,
                 )
             )
         return LoanSummary(total_amount=total_amount, total_loan=total_loan, loans=loan_responses)
@@ -341,6 +356,11 @@ async def update_loan(loan_id: str, payload: LoanUpdate = Body(...), db: Session
         db.commit()
         db.refresh(loan)
 
+        # Calculate total amount paid
+        total_paid = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+            LoanPayment.loan_id == loan.id
+        ).scalar()
+
         return LoanResponse(
             id=str(loan.id),
             user_id=str(loan.user_id),
@@ -349,6 +369,8 @@ async def update_loan(loan_id: str, payload: LoanUpdate = Body(...), db: Session
             deadline=loan.deadline,
             created_at=loan.created_at,
             updated_at=loan.updated_at,
+            status=loan.status,
+            total_amount_paid=total_paid,
         )
     except HTTPException:
         raise

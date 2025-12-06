@@ -28,6 +28,7 @@ class Loan(Base):
     amount = Column(Float, nullable=False)
     issued_date = Column(DateTime, nullable=False)
     deadline = Column(DateTime, nullable=False)
+    status = Column(String, nullable=False, default="active")  # active, paid, cancelled
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
