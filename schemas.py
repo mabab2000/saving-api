@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
+from typing import List
 from datetime import datetime
 import re
 
@@ -90,7 +91,22 @@ class LoanResponse(BaseModel):
 class LoanSummary(BaseModel):
     total_amount: float
     total_loan: int
-    loans: list[LoanResponse]
+    loans: List[LoanResponse]
+
+class LoanStatusResponse(BaseModel):
+    loan_id: str
+    status: str
+    total_amount_paid: float
+    loan_amount: float
+
+class LoanStatusResponse(BaseModel):
+    loan_id: str
+    status: str
+    total_amount_paid: float
+    loan_amount: float
+    
+    class Config:
+        from_attributes = True
 
 # Loan Payment Schemas
 class LoanPaymentCreate(BaseModel):

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 import logging
 import traceback
 import uuid
@@ -9,6 +10,7 @@ from schemas import (
     LoanCreate,
     LoanResponse,
     LoanSummary,
+    LoanStatusResponse,
     LoanPaymentCreate,
     LoanPaymentResponse,
     LoanPaymentSummary,
@@ -90,6 +92,36 @@ async def create_loan(loan_data: LoanCreate, db: Session = Depends(get_db)):
             detail=f"Error creating loan: {str(e)}"
         )
 
+# Get loan status and payment info by loan_id
+@router.get("/loan/{loan_id}/status", response_model=LoanStatusResponse)
+async def get_loan_status(loan_id: str, db: Session = Depends(get_db)):
+    try:
+        try:
+            loan_uuid = uuid.UUID(loan_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid loan ID format")
+
+        loan = db.query(Loan).filter(Loan.id == loan_uuid).first()
+        if not loan:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
+
+        # Calculate total amount paid
+        total_paid = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+            LoanPayment.loan_id == loan.id
+        ).scalar()
+
+        return LoanStatusResponse(
+            loan_id=str(loan.id),
+            status=loan.status,
+            total_amount_paid=total_paid,
+            loan_amount=loan.amount
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting loan status: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
 @router.get("/loans/{user_id}", response_model=LoanSummary)
 async def get_user_loans(user_id: str, db: Session = Depends(get_db)):
     """
@@ -157,6 +189,56 @@ async def get_user_loans(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching loans: {str(e)}"
+        )
+
+@router.get("/loan/{loan_id}/status", response_model=LoanStatusResponse)
+async def get_loan_status(loan_id: str, db: Session = Depends(get_db)):
+    """
+    Get loan status and payment information by loan ID
+    """
+    try:
+        # Validate loan ID format
+        try:
+            loan_uuid = uuid.UUID(loan_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid loan ID format"
+            )
+        
+        # Get loan from database
+        loan = db.query(Loan).filter(Loan.id == loan_uuid).first()
+        if not loan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Loan not found"
+            )
+        
+        # Calculate total amount paid using SQL function for better performance
+        from sqlalchemy import func
+        total_paid = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+            LoanPayment.loan_id == loan_uuid
+        ).scalar()
+        
+        # Calculate remaining balance
+        remaining_balance = loan.amount - total_paid
+        
+        return LoanStatusResponse(
+            loan_id=str(loan.id),
+            status=loan.status,
+            total_amount_paid=float(total_paid),
+            loan_amount=loan.amount,
+            remaining_balance=float(remaining_balance)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching loan status: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching loan status: {str(e)}"
         )
 
 @router.post("/loan-payment", response_model=LoanPaymentResponse)
