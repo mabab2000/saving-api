@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, field_serializer
 from typing import List
-from datetime import datetime
+from datetime import datetime, date
 import re
 
 # User Schemas
@@ -51,6 +51,10 @@ class SavingResponse(BaseModel):
     username: str | None = None
     phone_number: str | None = None
     created_at: datetime
+    
+    @field_serializer('created_at')
+    def serialize_created_at(self, dt: datetime) -> str:
+        return dt.strftime('%Y-%m-%d')
     
     class Config:
         from_attributes = True
@@ -198,6 +202,7 @@ class UserResponse(BaseModel):
     email: str
     phone_number: str
     total_saving: float = 0.0
+    profile_image_url: str | None = None
 
     class Config:
         from_attributes = True

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
-from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse
+from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse
 from database import get_db
 from s3_utils import upload_file_to_s3, generate_presigned_url
 from .auth import get_password_hash
@@ -118,6 +118,64 @@ async def upload_profile_photo(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error uploading profile photo: {str(e)}"
+        )
+
+# Get user profile by user_id
+@router.get("/profile/{user_id}", response_model=UserResponse)
+async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
+    """
+    Get user profile information by user_id
+    """
+    try:
+        logger.info(f"Fetching profile for user_id: {user_id}")
+        
+        # Verify user ID format
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid user ID format"
+            )
+        
+        # Get user from database
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Calculate total savings
+        total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(
+            Saving.user_id == user_uuid
+        ).scalar()
+        
+        # Get profile photo if exists
+        profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
+        profile_image_url = None
+        if profile_photo:
+            try:
+                profile_image_url = generate_presigned_url(profile_photo.photo)
+            except Exception as e:
+                logger.warning(f"Could not generate presigned URL for profile photo: {e}")
+        
+        return UserResponse(
+            id=str(user.id),
+            username=user.username,
+            email=user.email,
+            phone_number=user.phone_number,
+            total_saving=total_saving,
+            profile_image_url=profile_image_url
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching user profile: {str(e)}"
         )
 
 @router.get("/home/{user_id}", response_model=HomeResponse)
