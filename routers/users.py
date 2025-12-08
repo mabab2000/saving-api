@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pathlib import Path
 import logging
 import traceback
 import uuid
+import json
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
@@ -178,40 +179,47 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
             detail=f"Error fetching user profile: {str(e)}"
         )
 
-@router.get("/home/{user_id}", response_model=HomeResponse)
-async def get_home_info(user_id: str, db: Session = Depends(get_db)):
+@router.websocket("/home/{user_id}")
+async def websocket_home_info(websocket: WebSocket, user_id: str, db: Session = Depends(get_db)):
     """
-    Get home dashboard information for a user
+    WebSocket endpoint for real-time home dashboard information
     - Image preview link
     - Total saving
     - Total loan
     - Latest saving info (month, year, amount)
     """
+    await websocket.accept()
+    
     try:
-        logger.info(f"Fetching home info for user_id: {user_id}")
+        logger.info(f"WebSocket connection established for user_id: {user_id}")
         
         # Verify user exists
         try:
             user_uuid = uuid.UUID(user_id)
         except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid user ID format"
-            )
+            await websocket.send_text(json.dumps({
+                "error": "Invalid user ID format"
+            }))
+            await websocket.close()
+            return
         
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            await websocket.send_text(json.dumps({
+                "error": "User not found"
+            }))
+            await websocket.close()
+            return
         
         # Get profile photo
         profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
         image_preview_link = None
         if profile_photo:
-            # Generate pre-signed URL for the S3 object
-            image_preview_link = generate_presigned_url(profile_photo.photo)
+            try:
+                # Generate pre-signed URL for the S3 object
+                image_preview_link = generate_presigned_url(profile_photo.photo)
+            except Exception as e:
+                logger.warning(f"Could not generate presigned URL: {e}")
         
         # Calculate total savings
         total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
@@ -220,42 +228,64 @@ async def get_home_info(user_id: str, db: Session = Depends(get_db)):
         total_loan_amount = db.query(func.sum(Loan.amount)).filter(Loan.user_id == user_uuid).scalar() or 0.0
         
         # Calculate total loan payments
-        total_loan_payments = db.query(func.sum(LoanPayment.amount)).filter(LoanPayment.user_id == user_uuid).scalar() or 0.0
+        total_loan_payments = db.query(func.sum(LoanPayment.amount)).filter(
+            LoanPayment.user_id == user_uuid
+        ).scalar() or 0.0
         
-        # Calculate current loan (total loans - total payments)
-        current_loan = total_loan_amount - total_loan_payments
+        # Current loan balance
+        total_loan = total_loan_amount - total_loan_payments
         
         # Get latest saving info
-        latest_saving = db.query(Saving).filter(Saving.user_id == user_uuid).order_by(Saving.created_at.desc()).first()
+        latest_saving = db.query(Saving).filter(
+            Saving.user_id == user_uuid
+        ).order_by(Saving.created_at.desc()).first()
         
         latest_saving_info = None
         if latest_saving:
-            latest_saving_info = LatestSavingInfo(
-                month=latest_saving.created_at.month,
-                year=latest_saving.created_at.year,
-                amount=latest_saving.amount
-            )
+            latest_saving_info = {
+                "month": latest_saving.created_at.strftime("%B"),
+                "year": latest_saving.created_at.year,
+                "amount": latest_saving.amount
+            }
         
-        logger.info(f"Home info retrieved successfully for user: {user_id}")
+        # Send home data via WebSocket
+        home_data = {
+            "image_preview_link": image_preview_link,
+            "total_saving": total_saving,
+            "total_loan": total_loan,
+            "latest_saving_info": latest_saving_info
+        }
         
-        return HomeResponse(
-            user_id=str(user_uuid),
-            image_preview_link=image_preview_link,
-            total_saving=total_saving,
-            total_loan=current_loan,
-            latest_saving_info=latest_saving_info
-        )
+        await websocket.send_text(json.dumps(home_data))
         
-    except HTTPException:
-        raise
+        # Keep connection alive and listen for client messages
+        while True:
+            try:
+                # Wait for client message (for potential real-time updates)
+                data = await websocket.receive_text()
+                logger.info(f"Received WebSocket message: {data}")
+                
+                # Could implement real-time updates here
+                # For now, just echo back the current data
+                await websocket.send_text(json.dumps(home_data))
+                
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket disconnected for user {user_id}")
+                break
+                
     except Exception as e:
-        logger.error(f"Error fetching home info: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching home info: {str(e)}"
-        )
-
+        logger.error(f"Error in WebSocket home endpoint: {str(e)}")
+        try:
+            await websocket.send_text(json.dumps({
+                "error": f"Server error: {str(e)}"
+            }))
+        except:
+            pass
+        finally:
+            try:
+                await websocket.close()
+            except:
+                pass
 
 # Public/Admin: list members with basic info and profile image link
 @router.get("/members", response_model=list[MemberResponse])
