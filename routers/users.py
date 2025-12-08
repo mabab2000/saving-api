@@ -121,6 +121,64 @@ async def upload_profile_photo(
             detail=f"Error uploading profile photo: {str(e)}"
         )
 
+# Get profile photo URL by user_id
+@router.get("/profile-photo/{user_id}", response_model=ProfilePhotoURLResponse)
+async def get_profile_photo(user_id: str, db: Session = Depends(get_db)):
+    """
+    Get profile photo URL for a user
+    """
+    try:
+        logger.info(f"Fetching profile photo for user_id: {user_id}")
+        
+        # Verify user ID format
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid user ID format"
+            )
+        
+        # Verify user exists
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Get profile photo
+        profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
+        
+        if profile_photo:
+            try:
+                profile_image_url = generate_presigned_url(profile_photo.photo)
+                logger.info(f"Profile photo URL generated for user {user_id}")
+                
+                return ProfilePhotoURLResponse(
+                    image_preview_link=profile_image_url
+                )
+            except Exception as e:
+                logger.error(f"Error generating presigned URL: {str(e)}")
+                return ProfilePhotoURLResponse(
+                    image_preview_link=None
+                )
+        else:
+            logger.info(f"No profile photo found for user {user_id}")
+            return ProfilePhotoURLResponse(
+                image_preview_link=None
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching profile photo: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching profile photo: {str(e)}"
+        )
+
 # Get user profile by user_id
 @router.get("/profile/{user_id}", response_model=UserResponse)
 async def get_user_profile(user_id: str, db: Session = Depends(get_db)):

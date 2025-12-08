@@ -1,0 +1,80 @@
+# FCM (Firebase Cloud Messaging) Setup with Firebase Admin SDK
+
+## Environment Variables
+
+Add these environment variables to your `.env` file:
+
+```bash
+# Firebase Service Account Configuration
+FIREBASE_PROJECT_ID=techmix-d3dde
+FIREBASE_PRIVATE_KEY_ID=cf0e8840bac5d05f158bfb9fed6a99384dcbf137
+FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC8/V2CW5uOY2Sv\nrmQVxdLIt1P+wlRU0wYN80nqOJtpNKn+sjhJ4pJY5fkUVEY3itBzOiLgUj/pU+lu\n+34LlT1x/1bwijB/YMUU1RsfIAGZ+/n542eqyeHaw2uYyOn6e4a8yeJKThmoN8fb\nxmpWGAEe3jwu1gLP930DUIWQVSsE2MSReSuNMOU4D7dHDnTR41AoG0TDmvlg3Yqi\nyhtPWDqYxiGLIE7IuGMUcVgoDaDmWllO7HydolxBH7FkBfZtbWr5RMBxwaXHOuCh\nHD2gsOJAq9Mg1kTIHDQSgROoJY5S1kXWrm4F6DKEOZmOimhtXY5xv54tSgDb3F9Y\nLsJQMSG3AgMBAAECggEABqq/Cee6LylXBK7l28BT2oxDwsxdpDu+MeE8UwPEifna\n6ZjBzUEDFsQWkmlpHdUK+HoX8TVa7Jvgs6gx6YM/49Tm+2s6y/nHyhFnnCRs9ntl\ng8HYjjVz/xR+/UUX24eJQ1Z4jKnyVBjMGtqGNXgVpgkRFo8AEhCju4XsZL13+IlZ\nwZjN4Cf4sl5BfNqEIV1XIpkGHUESGrkAUTcxhCJ9bxHxAxcBh54U2mL7bDwrnU89\nSQH7plhpW/wKSjnG5b58H3gDRIbwS8EiY9WT4iGF7SP+SWEiqgQDSVTyMZLqnfh4\nZwEhQ4j0xDR81JsTZeJFUn1iv/K9O5Et9JVCtwRu2QKBgQDt70QV20Uk0RmtTdHf\nNeBjWWcPOjq1Lo9rQeI64mECRIhPPgDj/ZxKJYHEpzGXKDz3wTb/+Ozr24DRNT10\nI6ZCnVabSrmlaSYWE2YWwFqxJVD65b/IB4BZAD1cSeqsxOw0iZXuxUZPQJC+oRvN\nciGrJSxGlp/PDTvWTwAwkbt+DwKBgQDLVsHRjsy7nyYvbMUb+WPmOdRI652SGurT\nITRYs+4h9IFVKU/lrt+vfefXD6QLTRz9OuQAF4jOBiCxontXcihxIcBn/EkMxbzb\nLcGAi0BnDpSnRZQvUtT1Z7vttyucK5uX0MFiiwMP+ZWVmCy6KYyfps2VdieZnm0v\nZvVAmp9J2QKBgQDmJpgEUEpMt5qPwYOt1q6LSzJeT2P0V+pQxLTxYoKVr/buN7qi\nznF8Y1VoBJX6ceiveo0aAw4hgvzS4R3lloo/S3Q32ItEzjYSCoeooD3Zto/jcZMW\nCPOEo6+28qT2o7EbjK6j/Nzq0jhwvORo0OpyYw215gMFQ/bKcTZsxLrIzwKBgCYH\nfs5Tl8TLWhfqjt7RgLaRQDu3HUwzDpIYFrM0S6g8E2g7Br9dOmaW9KJLQZH/hRlz\nRyshO6vUh47RZaIQLrIh7ttD2uGxpcWURClnYc8kcfbq03EaW8vd787gwB5AJaR6\nHYDxoMv/ENPelxbmKG+/gZmfdH6Nm7wO1HWVtY7ZAoGBAKayfHKksGkeuQu3c61y\ngGMwAW1ZCbxcwe0Heb4KLtRI8mZ+ZMtIp6TwngO3dLLe34Asq+23rD6Za5zB8j7N\naP2pTEViVAwz+tPn0BHjkKkgfVw4j3rfQV5wgV/cCUg7dxO4ndlp8K/lt7S8+qoT\nXlTcPkK37ABuNBhvKQGX5wag\n-----END PRIVATE KEY-----\n
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@techmix-d3dde.iam.gserviceaccount.com
+FIREBASE_CLIENT_ID=107535544547273642632
+```
+
+## Installation
+
+Install the Firebase Admin SDK:
+
+```bash
+pip install firebase-admin
+```
+
+## Features
+
+The Firebase Admin SDK implementation provides:
+
+1. **More secure authentication** using service account credentials
+2. **Better error handling** and retry mechanisms
+3. **Platform-specific configurations** for Android and iOS
+4. **Automatic token validation** and refresh
+5. **Rich notification features** like badges, sounds, and channels
+
+## Notification Types
+
+The system sends notifications for:
+
+1. **New Saving Added** - When a user adds a new saving
+2. **Loan Approved** - When a loan is created for a user
+3. **Payment Received** - When a loan payment is made (future feature)
+
+## Notification Features
+
+### Android
+- High priority notifications
+- Custom notification channel: `savings_notifications`
+- Default sound and badge
+
+### iOS
+- APNS payload with badge count
+- Default sound
+- Rich notification support
+
+## Notification Format
+
+```json
+{
+  "title": "💰 New Saving Added!",
+  "body": "Congratulations John! You saved $1,000.00",
+  "data": {
+    "type": "saving_added",
+    "amount": "1000.0",
+    "username": "John"
+  }
+}
+```
+
+## Security
+
+- Service account credentials are loaded from environment variables
+- Private key is properly formatted with escaped newlines
+- No hardcoded credentials in the codebase
+- Firebase Admin SDK handles token validation automatically
+
+## Troubleshooting
+
+1. **Firebase not initialized**: Check that all environment variables are set correctly
+2. **Private key format**: Ensure the private key includes `\\n` for line breaks in the .env file
+3. **Token validation**: Firebase Admin SDK will validate FCM tokens automatically
+4. **Network issues**: Check internet connectivity and Firebase service status

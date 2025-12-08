@@ -65,6 +65,22 @@ async def create_loan(loan_data: LoanCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_loan)
         
+        # Send FCM notification if user has FCM token
+        if user.fcm_token:
+            try:
+                notification_sent = await send_loan_notification(
+                    fcm_token=user.fcm_token,
+                    amount=db_loan.amount,
+                    username=user.username
+                )
+                if notification_sent:
+                    logger.info(f"FCM notification sent successfully for loan: {db_loan.id}")
+                else:
+                    logger.warning(f"FCM notification failed for loan: {db_loan.id}")
+            except Exception as e:
+                logger.warning(f"Failed to send FCM notification: {str(e)}")
+                # Don't fail the loan creation if notification fails
+        
         logger.info(f"Loan created successfully: {db_loan.id}")
         
         return LoanResponse(

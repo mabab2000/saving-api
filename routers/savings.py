@@ -9,6 +9,7 @@ from schemas import SavingCreate, SavingResponse, SavingSummary, SavingUpdate
 from fastapi import Body
 import datetime
 from database import get_db
+from fcm_utils import send_saving_notification
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,6 +47,22 @@ async def create_saving(saving_data: SavingCreate, db: Session = Depends(get_db)
         db.add(db_saving)
         db.commit()
         db.refresh(db_saving)
+        
+        # Send FCM notification if user has FCM token
+        if user.fcm_token:
+            try:
+                notification_sent = await send_saving_notification(
+                    fcm_token=user.fcm_token,
+                    amount=db_saving.amount,
+                    username=user.username
+                )
+                if notification_sent:
+                    logger.info(f"FCM notification sent successfully for saving: {db_saving.id}")
+                else:
+                    logger.warning(f"FCM notification failed for saving: {db_saving.id}")
+            except Exception as e:
+                logger.warning(f"Failed to send FCM notification: {str(e)}")
+                # Don't fail the saving creation if notification fails
         
         logger.info(f"Saving created successfully: {db_saving.id}")
         

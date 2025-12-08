@@ -12,6 +12,7 @@ import os
 from models import User
 from schemas import UserLoginById, UserLogin, UserSignup, TokenWithUserInfo, PhoneVerification
 from database import get_db
+from fcm_utils import validate_fcm_token
 
 # Setup
 router = APIRouter()
@@ -112,15 +113,25 @@ async def verify_phone_number(phone_data: PhoneVerification, db: Session = Depen
         if user:
             # Update FCM token if provided
             if fcm_token:
-                user.fcm_token = fcm_token
-                db.commit()
-                db.refresh(user)
-                logger.info(f"FCM token updated for user {user.id}")
+                # Validate FCM token format before storing
+                is_valid_token = await validate_fcm_token(fcm_token)
+                if is_valid_token:
+                    user.fcm_token = fcm_token
+                    db.commit()
+                    db.refresh(user)
+                    logger.info(f"Valid FCM token updated for user {user.id}")
+                else:
+                    logger.warning(f"Invalid FCM token format provided for user {user.id}: {fcm_token[:20]}...")
+                    # Still proceed but don't store invalid token
+                    user.fcm_token = None
+                    db.commit()
+                    db.refresh(user)
             
             return {
                 "exists": True,
                 "message": "Verification successful",
-                "user_id": str(user.id)
+                "user_id": str(user.id),
+                "fcm_token_valid": is_valid_token if fcm_token else None
             }
         else:
             return {
