@@ -13,6 +13,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     phone_number = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    fcm_token = Column(String, nullable=True)  # FCM token for push notifications
 
 class Saving(Base):
     __tablename__ = "savings"

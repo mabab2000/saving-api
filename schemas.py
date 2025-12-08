@@ -29,6 +29,22 @@ class UserSignup(BaseModel):
             raise ValueError('Phone number must be country code 250 followed by 9 digits (e.g., 250123456789)')
         return phone
 
+# Phone verification schema
+class PhoneVerification(BaseModel):
+    phone_number: str = Field(..., description="Phone number with country code 250 followed by 9 digits")
+    fcm_token: str | None = Field(None, description="FCM token for push notifications (optional)")
+    
+    @field_validator('phone_number')
+    @classmethod
+    def validate_phone_number(cls, v):
+        # Remove any spaces or dashes
+        phone = v.replace(" ", "").replace("-", "")
+        
+        # Check if it matches the pattern: 250 followed by 9 digits
+        if not re.match(r'^250\d{9}$', phone):
+            raise ValueError('Phone number must be country code 250 followed by 9 digits (e.g., 250123456789)')
+        return phone
+
 # Token Schemas
 class Token(BaseModel):
     access_token: str

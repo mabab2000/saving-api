@@ -10,7 +10,7 @@ import re
 import os
 
 from models import User
-from schemas import UserLoginById, UserLogin, UserSignup, TokenWithUserInfo
+from schemas import UserLoginById, UserLogin, UserSignup, TokenWithUserInfo, PhoneVerification
 from database import get_db
 
 # Setup
@@ -97,36 +97,29 @@ async def api_login(user_data: UserLogin, db: Session = Depends(get_db)):
 
 # Verify phone number endpoint
 @router.post("/verify-phone")
-async def verify_phone_number(phone_data: dict, db: Session = Depends(get_db)):
+async def verify_phone_number(phone_data: PhoneVerification, db: Session = Depends(get_db)):
     """
-    Verify if a phone number exists in the database
+    Verify if a phone number exists in the database and update FCM token
     """
     try:
-        phone_number = phone_data.get("phone_number")
-        
-        if not phone_number:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Phone number is required"
-            )
-        
-        # Remove any spaces or dashes
-        phone = phone_number.replace(" ", "").replace("-", "")
-        
-        # Validate phone number format
-        if not re.match(r'^250\d{9}$', phone):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid phone number format. Must be country code 250 followed by 9 digits"
-            )
+        # Phone number is already validated by Pydantic
+        phone = phone_data.phone_number
+        fcm_token = phone_data.fcm_token
         
         # Check if phone number exists
         user = db.query(User).filter(User.phone_number == phone).first()
         
         if user:
+            # Update FCM token if provided
+            if fcm_token:
+                user.fcm_token = fcm_token
+                db.commit()
+                db.refresh(user)
+                logger.info(f"FCM token updated for user {user.id}")
+            
             return {
                 "exists": True,
-                "message": "Verfication successful",
+                "message": "Verification successful",
                 "user_id": str(user.id)
             }
         else:
@@ -139,6 +132,7 @@ async def verify_phone_number(phone_data: dict, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error during phone verification: {str(e)}")
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error verifying phone number: {str(e)}"
