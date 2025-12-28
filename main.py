@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import logging
 import uvicorn
@@ -21,6 +22,7 @@ try:
     from routers.users import router as users_router
     from routers.dashboard import router as dashboard_router
     from routers.stats_ws import router as stats_ws_router
+    from icon_router import router as icon_router
     logger.info("All routers imported successfully")
 except Exception as e:
     logger.error(f"Failed to import routers: {str(e)}")
@@ -61,8 +63,12 @@ app.include_router(loans_router, prefix="/api", tags=["Loans"])
 app.include_router(penalties_router, prefix="/api", tags=["Penalties"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
 app.include_router(dashboard_router, prefix="/api", tags=["Dashboard"])
+app.include_router(icon_router, prefix="/static", tags=["Static"])
 # WebSocket stats router (exposes /ws/stats)
 app.include_router(stats_ws_router)
+
+# Mount static files for app icons and assets
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def root():

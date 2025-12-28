@@ -54,7 +54,8 @@ async def create_saving(saving_data: SavingCreate, db: Session = Depends(get_db)
                 notification_sent = await send_saving_notification(
                     fcm_token=user.fcm_token,
                     amount=db_saving.amount,
-                    username=user.username
+                    username=user.username,
+                    saving_date=db_saving.created_at.isoformat()
                 )
                 if notification_sent:
                     logger.info(f"FCM notification sent successfully for saving: {db_saving.id}")

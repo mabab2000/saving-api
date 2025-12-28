@@ -111,6 +111,7 @@ async def verify_phone_number(phone_data: PhoneVerification, db: Session = Depen
         user = db.query(User).filter(User.phone_number == phone).first()
         
         if user:
+            is_valid_token = None
             # Update FCM token if provided
             if fcm_token:
                 # Validate FCM token format before storing
@@ -131,7 +132,7 @@ async def verify_phone_number(phone_data: PhoneVerification, db: Session = Depen
                 "exists": True,
                 "message": "Verification successful",
                 "user_id": str(user.id),
-                "fcm_token_valid": is_valid_token if fcm_token else None
+                "fcm_token_valid": is_valid_token
             }
         else:
             return {

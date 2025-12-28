@@ -120,7 +120,9 @@ async def send_expo_notification(
             "body": body,
             "data": data or {},
             "sound": "default",
-            "badge": 1
+            "badge": 1,
+            "categoryId": "savings_notifications",
+            "channelId": "savings_notifications"
         }
         
         headers = {
@@ -246,7 +248,7 @@ async def send_firebase_notification(
         logger.error(f"Error sending FCM notification: {str(e)}")
         return False
 
-async def send_saving_notification(fcm_token: str, amount: float, username: str) -> bool:
+async def send_saving_notification(fcm_token: str, amount: float, username: str, saving_date: str = None) -> bool:
     """
     Send notification for new saving entry
     
@@ -254,22 +256,42 @@ async def send_saving_notification(fcm_token: str, amount: float, username: str)
         fcm_token: FCM token of the user
         amount: Amount saved
         username: Username of the person who saved
+        saving_date: Date when the saving was made
         
     Returns:
         bool: True if notification sent successfully
     """
-    title = "💰 New Saving Added!"
-    body = f"Congratulations {username}! You saved ${amount:,.2f}"
+    from datetime import datetime
+    
+    # Format the date for display
+    if saving_date:
+        try:
+            # If saving_date is a string, parse it
+            if isinstance(saving_date, str):
+                date_obj = datetime.fromisoformat(saving_date.replace('Z', '+00:00'))
+            else:
+                date_obj = saving_date
+            formatted_date = date_obj.strftime("%B %d, %Y")
+            date_text = f" on {formatted_date}"
+        except:
+            date_text = ""
+    else:
+        date_text = " today"
+    
+    title = "💰 Saving Added Successfully!"
+    body = f"Great job {username}! You saved {amount:,.0f} RWF{date_text}. Keep up the good work!"
     
     data = {
         "type": "saving_added",
         "amount": str(amount),
-        "username": username
+        "currency": "RWF",
+        "username": username,
+        "saving_date": saving_date or datetime.now().isoformat()
     }
     
     return await send_fcm_notification(fcm_token, title, body, data)
 
-async def send_loan_notification(fcm_token: str, amount: float, username: str) -> bool:
+async def send_loan_notification(fcm_token: str, amount: float, username: str, approval_date: str = None) -> bool:
     """
     Send notification for new loan entry
     
@@ -277,22 +299,27 @@ async def send_loan_notification(fcm_token: str, amount: float, username: str) -
         fcm_token: FCM token of the user
         amount: Loan amount
         username: Username of the person who got the loan
+        approval_date: Date when the loan was approved
         
     Returns:
         bool: True if notification sent successfully
     """
-    title = "💳 Loan Approved!"
-    body = f"Your loan of ${amount:,.2f} has been approved"
+    from datetime import datetime
+    
+    title = "💳 Loan Application Approved!"
+    body = f"Congratulations {username}! Your loan of {amount:,.0f} RWF has been approved and is now available."
     
     data = {
         "type": "loan_approved", 
         "amount": str(amount),
-        "username": username
+        "currency": "RWF",
+        "username": username,
+        "approval_date": approval_date or datetime.now().isoformat()
     }
     
     return await send_fcm_notification(fcm_token, title, body, data)
 
-async def send_payment_notification(fcm_token: str, amount: float, username: str) -> bool:
+async def send_payment_notification(fcm_token: str, amount: float, username: str, payment_date: str = None) -> bool:
     """
     Send notification for loan payment
     
@@ -300,17 +327,22 @@ async def send_payment_notification(fcm_token: str, amount: float, username: str
         fcm_token: FCM token of the user
         amount: Payment amount
         username: Username of the person who made the payment
+        payment_date: Date when the payment was made
         
     Returns:
         bool: True if notification sent successfully
     """
-    title = "💸 Payment Received!"
-    body = f"Payment of ${amount:,.2f} received from {username}"
+    from datetime import datetime
+    
+    title = "💸 Loan Payment Received!"
+    body = f"Payment confirmed! {username} has paid {amount:,.0f} RWF towards their loan."
     
     data = {
         "type": "payment_received",
-        "amount": str(amount), 
-        "username": username
+        "amount": str(amount),
+        "currency": "RWF", 
+        "username": username,
+        "payment_date": payment_date or datetime.now().isoformat()
     }
     
     return await send_fcm_notification(fcm_token, title, body, data)
