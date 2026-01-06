@@ -6,8 +6,7 @@ import logging
 import traceback
 import uuid
 import json
-import os
-import shutil
+import base64
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment
@@ -18,16 +17,6 @@ from fastapi import Body
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Profile images directory
-PROFILE_IMAGES_DIR = Path("uploads/profile_images")
-PROFILE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-
-def get_profile_image_url(filename: str) -> str:
-    """Generate the full URL for a profile image"""
-    from main import app
-    base_url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
-    return f"{base_url.rstrip('/')}/uploads/profile_images/{filename}"
 
 @router.post("/profile-photo", response_model=ProfilePhotoResponse)
 async def upload_profile_photo(
@@ -67,57 +56,37 @@ async def upload_profile_photo(
                 detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"
             )
         
-        # Read image content and save to disk
+        # Read image content
         try:
             contents = await photo.read()
-            if not contents:
-                raise ValueError("Empty file")
+            content_type = photo.content_type or "image/jpeg"
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error reading file: {str(e)}"
             )
         
-        # Generate unique filename
-        unique_filename = f"{user_uuid}{file_ext}"
-        file_path = PROFILE_IMAGES_DIR / unique_filename
-        
-        # Save file to disk
-        try:
-            with open(file_path, "wb") as f:
-                f.write(contents)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error saving file: {str(e)}"
-            )
-        
         # Check if profile photo already exists for this user
         existing_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
         
         if existing_photo:
-            # Delete old file if it exists
-            old_file_path = Path(existing_photo.photo_path)
-            if old_file_path.exists():
-                try:
-                    old_file_path.unlink()
-                except Exception as e:
-                    logger.warning(f"Could not delete old file: {e}")
-            
-            # Update existing photo record
-            existing_photo.photo_path = str(file_path)
+            # Update existing photo
+            existing_photo.photo = contents
+            existing_photo.content_type = content_type
             existing_photo.updated_at = datetime.utcnow()
             db.commit()
             db.refresh(existing_photo)
             
             logger.info(f"Profile photo updated successfully: {existing_photo.id}")
             
-            profile_url = get_profile_image_url(unique_filename)
+            # Return base64 encoded image
+            photo_base64 = base64.b64encode(existing_photo.photo).decode('utf-8')
+            photo_data_url = f"data:{existing_photo.content_type};base64,{photo_base64}"
             
             return ProfilePhotoResponse(
                 id=str(existing_photo.id),
                 user_id=str(existing_photo.user_id),
-                photo=profile_url,
+                photo=photo_data_url,
                 created_at=existing_photo.created_at,
                 updated_at=existing_photo.updated_at
             )
@@ -125,7 +94,8 @@ async def upload_profile_photo(
             # Create new profile photo entry
             db_photo = ProfilePhoto(
                 user_id=user_uuid,
-                photo_path=str(file_path)
+                photo=contents,
+                content_type=content_type
             )
             
             db.add(db_photo)
@@ -134,12 +104,14 @@ async def upload_profile_photo(
             
             logger.info(f"Profile photo uploaded successfully: {db_photo.id}")
             
-            profile_url = get_profile_image_url(unique_filename)
+            # Return base64 encoded image
+            photo_base64 = base64.b64encode(db_photo.photo).decode('utf-8')
+            photo_data_url = f"data:{db_photo.content_type};base64,{photo_base64}"
             
             return ProfilePhotoResponse(
                 id=str(db_photo.id),
                 user_id=str(db_photo.user_id),
-                photo=profile_url,
+                photo=photo_data_url,
                 created_at=db_photo.created_at,
                 updated_at=db_photo.updated_at
             )
@@ -186,15 +158,16 @@ async def get_profile_photo(user_id: str, db: Session = Depends(get_db)):
         
         if profile_photo:
             try:
-                filename = Path(profile_photo.photo_path).name
-                profile_image_url = get_profile_image_url(filename)
-                logger.info(f"Profile photo URL generated for user {user_id}")
+                # Convert binary data to base64 data URL
+                photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
+                profile_image_url = f"data:{profile_photo.content_type};base64,{photo_base64}"
+                logger.info(f"Profile photo generated for user {user_id}")
                 
                 return ProfilePhotoURLResponse(
                     image_preview_link=profile_image_url
                 )
             except Exception as e:
-                logger.error(f"Error generating profile photo URL: {str(e)}")
+                logger.error(f"Error encoding profile photo: {str(e)}")
                 return ProfilePhotoURLResponse(
                     image_preview_link=None
                 )
@@ -250,10 +223,10 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
         profile_image_url = None
         if profile_photo:
             try:
-                filename = Path(profile_photo.photo_path).name
-                profile_image_url = get_profile_image_url(filename)
+                photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
+                profile_image_url = f"data:{profile_photo.content_type};base64,{photo_base64}"
             except Exception as e:
-                logger.warning(f"Could not generate profile photo URL: {e}")
+                logger.warning(f"Could not encode profile photo: {e}")
         
         return UserResponse(
             id=str(user.id),
@@ -310,10 +283,11 @@ async def websocket_home_info(websocket: WebSocket, user_id: str, db: Session = 
         image_preview_link = None
         if profile_photo:
             try:
-                filename = Path(profile_photo.photo_path).name
-                image_preview_link = get_profile_image_url(filename)
+                # Convert binary data to base64 data URL
+                photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
+                image_preview_link = f"data:{profile_photo.content_type};base64,{photo_base64}"
             except Exception as e:
-                logger.warning(f"Could not generate profile photo URL: {e}")
+                logger.warning(f"Could not encode profile photo: {e}")
         
         # Calculate total savings
         total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
@@ -393,8 +367,8 @@ async def list_members(db: Session = Depends(get_db)):
             image_preview_link = None
             if profile_photo:
                 try:
-                    filename = Path(profile_photo.photo_path).name
-                    image_preview_link = get_profile_image_url(filename)
+                    photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
+                    image_preview_link = f"data:{profile_photo.content_type};base64,{photo_base64}"
                 except Exception:
                     image_preview_link = None
 
