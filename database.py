@@ -42,13 +42,29 @@ try:
         "keepalives_count": 3,
     }
     
+    # For Supabase pooled connections, add search_path to the URL options
+    # This ensures the schema is set before any queries
+    if "?" in DATABASE_URL:
+        db_url = DATABASE_URL + "&options=-c%20search_path%3Dpublic"
+    else:
+        db_url = DATABASE_URL + "?options=-c%20search_path%3Dpublic"
+    
+    from sqlalchemy import event
+    
     engine = create_engine(
-        DATABASE_URL, 
+        db_url, 
         connect_args=connect_args,
         pool_timeout=20,
         pool_recycle=3600,
         pool_pre_ping=True
     )
+    
+    # Set search_path on every new connection (works with connection poolers)
+    @event.listens_for(engine, "connect")
+    def set_search_path(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET search_path TO public")
+        cursor.close()
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     # Create tables
