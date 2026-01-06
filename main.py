@@ -69,6 +69,8 @@ app.include_router(stats_ws_router)
 
 # Mount static files for app icons and assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount uploads directory for profile images
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/")
 async def root():
