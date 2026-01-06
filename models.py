@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
@@ -37,7 +37,8 @@ class ProfilePhoto(Base):
     __tablename__ = "profile_photos"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("saving_users.id"), nullable=False, unique=True, index=True)
-    photo = Column(String, nullable=False)  # S3 key for the photo
+    photo = Column(LargeBinary, nullable=False)  # Binary image data
+    content_type = Column(String, nullable=False, default="image/jpeg")  # MIME type
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
