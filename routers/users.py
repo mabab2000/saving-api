@@ -9,7 +9,7 @@ import json
 import base64
 from datetime import datetime
 
-from models import User, ProfilePhoto, Saving, Loan, LoanPayment
+from models import User, ProfilePhoto, Saving, Loan, LoanPayment, Distribution, PayLoanUsingSaving
 from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse
 from database import get_db
 from .auth import get_password_hash
@@ -217,6 +217,18 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
         total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(
             Saving.user_id == user_uuid
         ).scalar()
+
+        # Calculate total distributions for this user
+        total_distributions = db.query(func.coalesce(func.sum(Distribution.amount), 0)).filter(
+            Distribution.user_id == user_uuid
+        ).scalar() or 0.0
+
+        # Calculate total pay-loan-using-saving for this user
+        total_payloan_using_saving = db.query(func.coalesce(func.sum(PayLoanUsingSaving.amount), 0)).filter(
+            PayLoanUsingSaving.user_id == user_uuid
+        ).scalar() or 0.0
+
+        original_saving = (total_saving or 0.0) - (total_distributions or 0.0) - (total_payloan_using_saving or 0.0)
         
         # Get profile photo if exists
         profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
@@ -234,6 +246,7 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
             email=user.email,
             phone_number=user.phone_number,
             total_saving=total_saving,
+            original_saving=original_saving,
             profile_image_url=profile_image_url
         )
         
@@ -396,7 +409,12 @@ async def list_users(db: Session = Depends(get_db)):
         result: list[UserResponse] = []
         for u in users:
             # Calculate total saving for the user
-            total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == u.id).scalar() or 0.0
+            total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == u.id).scalar() or 0.0
+
+            total_distributions = db.query(func.coalesce(func.sum(Distribution.amount), 0)).filter(Distribution.user_id == u.id).scalar() or 0.0
+            total_payloan_using_saving = db.query(func.coalesce(func.sum(PayLoanUsingSaving.amount), 0)).filter(PayLoanUsingSaving.user_id == u.id).scalar() or 0.0
+
+            original_saving = float(total_saving) - float(total_distributions) - float(total_payloan_using_saving)
 
             result.append(
                 UserResponse(
@@ -405,6 +423,7 @@ async def list_users(db: Session = Depends(get_db)):
                     email=u.email,
                     phone_number=u.phone_number,
                     total_saving=float(total_saving),
+                    original_saving=original_saving,
                 )
             )
 

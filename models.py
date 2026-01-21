@@ -60,3 +60,23 @@ class LoanPayment(Base):
     amount = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class Distribution(Base):
+    __tablename__ = "distributions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    # Removed ForeignKey to avoid DB creation error when referenced table lacks a UNIQUE/PK on `id`.
+    # Will rely on application-level validation; add FK back after DB cleanup if desired.
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PayLoanUsingSaving(Base):
+    __tablename__ = "pay_loan_using_savings"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    # Avoiding DB-level ForeignKey to prevent create_all FK errors; validate user existence in app logic
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

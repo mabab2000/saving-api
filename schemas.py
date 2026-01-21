@@ -150,6 +150,57 @@ class LoanPaymentSummary(BaseModel):
     total_payments: int
     payments: list[LoanPaymentResponse]
 
+
+# Distribution Schemas
+class DistributionCreate(BaseModel):
+    user_id: str  # UUID as string
+    amount: float = Field(..., gt=0, description="Amount must be greater than 0")
+
+
+class DistributionResponse(BaseModel):
+    id: str
+    user_id: str
+    full_name: str | None = None
+    amount: float
+    year: int
+
+    class Config:
+        from_attributes = True
+
+
+class DistributionUpdate(BaseModel):
+    amount: float | None = None
+    created_at: datetime | None = None
+
+
+# PayLoanUsingSaving Schemas
+class PayLoanUsingSavingCreate(BaseModel):
+    user_id: str
+    amount: float = Field(..., gt=0, description="Amount must be greater than 0")
+    description: str | None = None
+
+
+class PayLoanUsingSavingResponse(BaseModel):
+    id: str
+    user_id: str
+    full_name: str | None = None
+    amount: float
+    description: str | None = None
+    created_at: datetime
+
+    @field_serializer('created_at')
+    def serialize_created_at(self, dt: datetime) -> str:
+        return dt.strftime('%Y-%m-%d')
+
+    class Config:
+        from_attributes = True
+
+
+class PayLoanUsingSavingUpdate(BaseModel):
+    amount: float | None = None
+    description: str | None = None
+    created_at: datetime | None = None
+
 # Profile Photo Schemas
 class ProfilePhotoResponse(BaseModel):
     id: str
@@ -218,6 +269,7 @@ class UserResponse(BaseModel):
     email: str
     phone_number: str
     total_saving: float = 0.0
+    original_saving: float = 0.0
     profile_image_url: str | None = None
 
     class Config:

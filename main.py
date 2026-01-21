@@ -20,6 +20,8 @@ try:
     from routers.loans import router as loans_router
     from routers.penalties import router as penalties_router
     from routers.users import router as users_router
+    from routers.distributions import router as distributions_router
+    from routers.pay_loan_using_saving import router as pay_loan_using_saving_router
     from routers.dashboard import router as dashboard_router
     from routers.stats_ws import router as stats_ws_router
     from icon_router import router as icon_router
@@ -62,6 +64,8 @@ app.include_router(savings_router, prefix="/api", tags=["Savings"])
 app.include_router(loans_router, prefix="/api", tags=["Loans"])
 app.include_router(penalties_router, prefix="/api", tags=["Penalties"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
+app.include_router(distributions_router, prefix="/api", tags=["Distributions"])
+app.include_router(pay_loan_using_saving_router, prefix="/api", tags=["PayLoanUsingSaving"])
 app.include_router(dashboard_router, prefix="/api", tags=["Dashboard"])
 app.include_router(icon_router, prefix="/static", tags=["Static"])
 # WebSocket stats router (exposes /ws/stats)
