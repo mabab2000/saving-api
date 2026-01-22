@@ -81,16 +81,9 @@ async def root():
     """
     return {
         "message": "Saving Management System API",
-        "description": "API for managing savings and user authentication",
-        "version": "1.0.0",
-        "endpoints": {
-            "auth": "/api/login, /api/login-by-id, /api/signup, /api/verify-phone",
-            "savings": "/api/saving, /api/savings/{user_id}",
-            "loans": "/api/loan, /api/loans/{user_id}, /api/loan-payment, /api/loan-payments/{loan_id}", 
-            "penalties": "/api/penalty, /api/penalties/{user_id}",
-            "users": "/api/profile-photo, /api/home/{user_id}",
-            "dashboard": "/api/dashboard/{user_id}"
-        }
+        "description": "API for managing savings Developed by BIZIYAREMYE Alphonse",
+       
+        
     }
 
 if __name__ == "__main__":

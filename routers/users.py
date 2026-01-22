@@ -380,6 +380,100 @@ async def websocket_home_info(websocket: WebSocket, user_id: str, db: Session = 
             except:
                 pass
 
+
+# HTTP endpoint: home dashboard info
+@router.get("/home/{user_id}", response_model=HomeResponse)
+async def get_home_info(user_id: str, db: Session = Depends(get_db)):
+    """
+    HTTP endpoint for home dashboard information
+    - image_preview_link
+    - total_saving
+    - total_loan (only active loans considered)
+    - latest_saving_info (month:number, year:number, amount:number)
+    """
+    try:
+        logger.info(f"Fetching home info for user_id: {user_id}")
+
+        # Verify user exists
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid user ID format"
+            )
+
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        # Get profile photo
+        profile_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
+        image_preview_link = None
+        if profile_photo:
+            try:
+                image_preview_link = profile_photo.photo_url
+            except Exception as e:
+                logger.warning(f"Could not get profile photo: {e}")
+
+        # Calculate total savings
+        total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == user_uuid).scalar() or 0.0
+
+        # Calculate total loans (only active loans)
+        total_loan_amount = db.query(func.coalesce(func.sum(Loan.amount), 0)).filter(
+            Loan.user_id == user_uuid,
+            Loan.status == "active"
+        ).scalar() or 0.0
+
+        # Sum payments only for those active loans
+        active_loan_rows = db.query(Loan.id).filter(Loan.user_id == user_uuid, Loan.status == "active").all()
+        active_loan_ids = [row[0] for row in active_loan_rows] if active_loan_rows else []
+
+        if active_loan_ids:
+            total_loan_payments = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+                LoanPayment.loan_id.in_(active_loan_ids)
+            ).scalar() or 0.0
+        else:
+            total_loan_payments = 0.0
+
+        current_loan = float(total_loan_amount) - float(total_loan_payments)
+        if current_loan < 0:
+            current_loan = 0.0
+
+        # Get latest saving info
+        latest_saving = db.query(Saving).filter(
+            Saving.user_id == user_uuid
+        ).order_by(Saving.created_at.desc()).first()
+
+        latest_saving_info = None
+        if latest_saving:
+            latest_saving_info = {
+                "month": latest_saving.created_at.month,
+                "year": latest_saving.created_at.year,
+                "amount": latest_saving.amount
+            }
+
+        return HomeResponse(
+            user_id=str(user_uuid),
+            image_preview_link=image_preview_link,
+            total_saving=total_saving,
+            total_loan=current_loan,
+            latest_saving_info=latest_saving_info
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching home info: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching home info: {str(e)}"
+        )
+
 # Public/Admin: list members with basic info and profile image link
 @router.get("/members", response_model=list[MemberResponse])
 async def list_members(db: Session = Depends(get_db)):
