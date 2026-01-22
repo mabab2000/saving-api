@@ -315,34 +315,46 @@ async def websocket_home_info(websocket: WebSocket, user_id: str, db: Session = 
                 logger.warning(f"Could not get profile photo: {e}")
         
         # Calculate total savings
-        total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
-        
-        # Calculate total loans
-        total_loan_amount = db.query(func.sum(Loan.amount)).filter(Loan.user_id == user_uuid).scalar() or 0.0
-        
-        # Calculate total loan payments
-        total_loan_payments = db.query(func.sum(LoanPayment.amount)).filter(
-            LoanPayment.user_id == user_uuid
+        total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == user_uuid).scalar() or 0.0
+
+        # Calculate total loans (only active loans)
+        total_loan_amount = db.query(func.coalesce(func.sum(Loan.amount), 0)).filter(
+            Loan.user_id == user_uuid,
+            Loan.status == "active"
         ).scalar() or 0.0
-        
-        # Current loan balance
-        total_loan = total_loan_amount - total_loan_payments
-        
+
+        # Sum payments only for those active loans
+        active_loan_rows = db.query(Loan.id).filter(Loan.user_id == user_uuid, Loan.status == "active").all()
+        active_loan_ids = [row[0] for row in active_loan_rows] if active_loan_rows else []
+
+        if active_loan_ids:
+            total_loan_payments = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+                LoanPayment.loan_id.in_(active_loan_ids)
+            ).scalar() or 0.0
+        else:
+            total_loan_payments = 0.0
+
+        # Calculate current loan (only considering active loans). If none, return 0.
+        total_loan = float(total_loan_amount) - float(total_loan_payments)
+        if total_loan < 0:
+            total_loan = 0.0
+
         # Get latest saving info
         latest_saving = db.query(Saving).filter(
             Saving.user_id == user_uuid
         ).order_by(Saving.created_at.desc()).first()
-        
+
         latest_saving_info = None
         if latest_saving:
             latest_saving_info = {
-                "month": latest_saving.created_at.strftime("%B"),
+                "month": latest_saving.created_at.month,
                 "year": latest_saving.created_at.year,
                 "amount": latest_saving.amount
             }
-        
+
         # Send home data via WebSocket
         home_data = {
+            "user_id": str(user_uuid),
             "image_preview_link": image_preview_link,
             "total_saving": total_saving,
             "total_loan": total_loan,
