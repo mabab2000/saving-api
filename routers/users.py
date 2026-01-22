@@ -13,6 +13,7 @@ from models import User, ProfilePhoto, Saving, Loan, LoanPayment, Distribution, 
 from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse
 from database import get_db
 from .auth import get_password_hash
+from supabase_utils import upload_image_to_supabase, delete_image_from_supabase
 from fastapi import Body
 
 router = APIRouter()
@@ -25,7 +26,7 @@ async def upload_profile_photo(
     db: Session = Depends(get_db)
 ):
     """
-    Upload or update profile photo for a user
+    Upload or update profile photo for a user to Supabase storage
     """
     try:
         logger.info(f"Uploading profile photo for user_id: {user_id}")
@@ -66,12 +67,29 @@ async def upload_profile_photo(
                 detail=f"Error reading file: {str(e)}"
             )
         
+        # Upload to Supabase storage (folder: saving-image)
+        try:
+            photo_url = upload_image_to_supabase(
+                file_content=contents,
+                filename=photo.filename,
+                folder="saving-image"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error uploading to Supabase: {str(e)}"
+            )
+        
         # Check if profile photo already exists for this user
         existing_photo = db.query(ProfilePhoto).filter(ProfilePhoto.user_id == user_uuid).first()
         
         if existing_photo:
-            # Update existing photo
-            existing_photo.photo = contents
+            # Delete old image from Supabase if exists
+            if existing_photo.photo_url:
+                delete_image_from_supabase(existing_photo.photo_url)
+            
+            # Update existing photo with new Supabase URL
+            existing_photo.photo_url = photo_url
             existing_photo.content_type = content_type
             existing_photo.updated_at = datetime.utcnow()
             db.commit()
@@ -79,14 +97,10 @@ async def upload_profile_photo(
             
             logger.info(f"Profile photo updated successfully: {existing_photo.id}")
             
-            # Return base64 encoded image
-            photo_base64 = base64.b64encode(existing_photo.photo).decode('utf-8')
-            photo_data_url = f"data:{existing_photo.content_type};base64,{photo_base64}"
-            
             return ProfilePhotoResponse(
                 id=str(existing_photo.id),
                 user_id=str(existing_photo.user_id),
-                photo=photo_data_url,
+                photo=existing_photo.photo_url,
                 created_at=existing_photo.created_at,
                 updated_at=existing_photo.updated_at
             )
@@ -94,7 +108,13 @@ async def upload_profile_photo(
             # Create new profile photo entry
             db_photo = ProfilePhoto(
                 user_id=user_uuid,
-                photo=contents,
+                photo_url=photo_url,
+                content_type=content_type
+            )
+            # Create new profile photo entry
+            db_photo = ProfilePhoto(
+                user_id=user_uuid,
+                photo_url=photo_url,
                 content_type=content_type
             )
             
@@ -104,14 +124,10 @@ async def upload_profile_photo(
             
             logger.info(f"Profile photo uploaded successfully: {db_photo.id}")
             
-            # Return base64 encoded image
-            photo_base64 = base64.b64encode(db_photo.photo).decode('utf-8')
-            photo_data_url = f"data:{db_photo.content_type};base64,{photo_base64}"
-            
             return ProfilePhotoResponse(
                 id=str(db_photo.id),
                 user_id=str(db_photo.user_id),
-                photo=photo_data_url,
+                photo=db_photo.photo_url,
                 created_at=db_photo.created_at,
                 updated_at=db_photo.updated_at
             )
@@ -158,16 +174,14 @@ async def get_profile_photo(user_id: str, db: Session = Depends(get_db)):
         
         if profile_photo:
             try:
-                # Convert binary data to base64 data URL
-                photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
-                profile_image_url = f"data:{profile_photo.content_type};base64,{photo_base64}"
-                logger.info(f"Profile photo generated for user {user_id}")
+                # Return Supabase URL
+                logger.info(f"Profile photo found for user {user_id}")
                 
                 return ProfilePhotoURLResponse(
-                    image_preview_link=profile_image_url
+                    image_preview_link=profile_photo.photo_url
                 )
             except Exception as e:
-                logger.error(f"Error encoding profile photo: {str(e)}")
+                logger.error(f"Error retrieving profile photo: {str(e)}")
                 return ProfilePhotoURLResponse(
                     image_preview_link=None
                 )
@@ -235,10 +249,9 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
         profile_image_url = None
         if profile_photo:
             try:
-                photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
-                profile_image_url = f"data:{profile_photo.content_type};base64,{photo_base64}"
+                profile_image_url = profile_photo.photo_url
             except Exception as e:
-                logger.warning(f"Could not encode profile photo: {e}")
+                logger.warning(f"Could not get profile photo: {e}")
         
         return UserResponse(
             id=str(user.id),
@@ -296,11 +309,10 @@ async def websocket_home_info(websocket: WebSocket, user_id: str, db: Session = 
         image_preview_link = None
         if profile_photo:
             try:
-                # Convert binary data to base64 data URL
-                photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
-                image_preview_link = f"data:{profile_photo.content_type};base64,{photo_base64}"
+                # Get Supabase URL
+                image_preview_link = profile_photo.photo_url
             except Exception as e:
-                logger.warning(f"Could not encode profile photo: {e}")
+                logger.warning(f"Could not get profile photo: {e}")
         
         # Calculate total savings
         total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
@@ -380,8 +392,7 @@ async def list_members(db: Session = Depends(get_db)):
             image_preview_link = None
             if profile_photo:
                 try:
-                    photo_base64 = base64.b64encode(profile_photo.photo).decode('utf-8')
-                    image_preview_link = f"data:{profile_photo.content_type};base64,{photo_base64}"
+                    image_preview_link = profile_photo.photo_url
                 except Exception:
                     image_preview_link = None
 

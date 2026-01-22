@@ -37,7 +37,7 @@ class ProfilePhoto(Base):
     __tablename__ = "profile_photos"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("saving_users.id"), nullable=False, unique=True, index=True)
-    photo = Column(LargeBinary, nullable=False)  # Binary image data
+    photo_url = Column(String, nullable=False)  # Supabase image URL
     content_type = Column(String, nullable=False, default="image/jpeg")  # MIME type
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
