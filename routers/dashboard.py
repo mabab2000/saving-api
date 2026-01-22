@@ -42,14 +42,28 @@ async def get_dashboard_info(user_id: str, db: Session = Depends(get_db)):
         # Calculate total savings
         total_saving = db.query(func.sum(Saving.amount)).filter(Saving.user_id == user_uuid).scalar() or 0.0
         
-        # Calculate total loans
-        total_loan_amount = db.query(func.sum(Loan.amount)).filter(Loan.user_id == user_uuid).scalar() or 0.0
-        
-        # Calculate total loan payments
-        total_loan_payments = db.query(func.sum(LoanPayment.amount)).filter(LoanPayment.user_id == user_uuid).scalar() or 0.0
-        
-        # Calculate current loan (total loans - total payments)
-        current_loan = total_loan_amount - total_loan_payments
+        # Calculate total loans (only active loans)
+        total_loan_amount = db.query(func.coalesce(func.sum(Loan.amount), 0)).filter(
+            Loan.user_id == user_uuid,
+            Loan.status == "active"
+        ).scalar() or 0.0
+
+        # Sum payments only for those active loans
+        # First get active loan ids for the user
+        active_loan_rows = db.query(Loan.id).filter(Loan.user_id == user_uuid, Loan.status == "active").all()
+        active_loan_ids = [row[0] for row in active_loan_rows] if active_loan_rows else []
+
+        if active_loan_ids:
+            total_loan_payments = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
+                LoanPayment.loan_id.in_(active_loan_ids)
+            ).scalar() or 0.0
+        else:
+            total_loan_payments = 0.0
+
+        # Calculate current loan (only considering active loans). If user has no active loans, return 0.
+        current_loan = float(total_loan_amount) - float(total_loan_payments)
+        if current_loan < 0:
+            current_loan = 0.0
         
         # Calculate total penalties
         total_penalties = db.query(func.sum(Penalty.amount)).filter(Penalty.user_id == user_uuid).scalar() or 0.0
