@@ -11,6 +11,10 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+class GoogleLoginRequest(BaseModel):
+    token: str  # Google ID token from client
+    fcm_token: str | None = None  # Optional FCM token for push notifications
+
 class UserSignup(BaseModel):
     username: str
     email: str

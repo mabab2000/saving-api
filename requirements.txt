@@ -12,3 +12,6 @@ boto3
 firebase-admin
 requests
 supabase
+google-auth
+google-auth-oauthlib
+google-auth-httplib2

@@ -12,8 +12,11 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     phone_number = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    hashed_password = Column(String, nullable=True)  # Nullable for OAuth users
     fcm_token = Column(String, nullable=True)  # FCM token for push notifications
+    oauth_provider = Column(String, nullable=True)  # e.g., 'google', 'facebook'
+    oauth_id = Column(String, nullable=True)  # OAuth provider's user ID
+    profile_picture = Column(String, nullable=True)  # Profile picture URL from OAuth
 
 class Saving(Base):
     __tablename__ = "savings"
