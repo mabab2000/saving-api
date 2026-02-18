@@ -5,7 +5,7 @@ from sqlalchemy import func
 from datetime import datetime
 
 from database import SessionLocal
-from models import User, Saving, Loan, Penalty, LoanPayment, Distribution
+from models import User, Saving, Loan, Penalty, LoanPayment, Distribution, PayLoanUsingSaving
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -17,10 +17,12 @@ def compute_stats(db):
     total_loans = db.query(func.coalesce(func.sum(Loan.amount), 0)).scalar() or 0.0
     total_penalties = db.query(func.coalesce(func.sum(Penalty.amount), 0)).scalar() or 0.0
     total_distributions = db.query(func.coalesce(func.sum(Distribution.amount), 0)).scalar() or 0.0
+    total_pay_loan_using_saving = db.query(func.coalesce(func.sum(PayLoanUsingSaving.amount), 0)).scalar() or 0.0
     user_count = db.query(func.count(User.id)).scalar() or 0
 
     # Calculate original savings (savings - distributions)
-    total_original_saving = total_savings - total_distributions
+    # Also subtract amounts used to pay loans from savings
+    total_original_saving = total_savings - total_distributions - total_pay_loan_using_saving
 
     # Latest saving month/year
     latest_saving = db.query(Saving).order_by(Saving.created_at.desc()).first()
@@ -47,6 +49,7 @@ def compute_stats(db):
         "total_savings": float(total_savings),
         "total_original_saving": float(total_original_saving),  # Total savings - total distributions
         "total_distributions": float(total_distributions),
+        "total_pay_loan_using_saving": float(total_pay_loan_using_saving),
         "total_loans": float(total_loans),
         "total_penalties": float(total_penalties),
         "user_count": int(user_count),
