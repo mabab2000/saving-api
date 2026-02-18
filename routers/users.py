@@ -10,7 +10,7 @@ import base64
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment, Distribution, PayLoanUsingSaving
-from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse
+from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse, DistributionResponse, UserDistributionsResponse
 from database import get_db
 from .auth import get_password_hash
 from supabase_utils import upload_image_to_supabase, delete_image_from_supabase
@@ -515,6 +515,117 @@ async def list_members(db: Session = Depends(get_db)):
         return members
     except Exception as e:
         logger.error(f"Error listing members: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/users/{user_id}/distributions", response_model=UserDistributionsResponse)
+async def get_user_distributions_and_info(user_id: str, db: Session = Depends(get_db)):
+    """
+    Return user info and their distributions list
+    """
+    try:
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format")
+
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        # Calculate totals for user
+        total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == user_uuid).scalar() or 0.0
+        total_distributions = db.query(func.coalesce(func.sum(Distribution.amount), 0)).filter(Distribution.user_id == user_uuid).scalar() or 0.0
+        total_payloan_using_saving = db.query(func.coalesce(func.sum(PayLoanUsingSaving.amount), 0)).filter(PayLoanUsingSaving.user_id == user_uuid).scalar() or 0.0
+        original_saving = float(total_saving) - float(total_distributions) - float(total_payloan_using_saving)
+
+        user_resp = UserResponse(
+            id=str(user.id),
+            username=user.username,
+            email=user.email,
+            phone_number=user.phone_number,
+            total_saving=float(total_saving),
+            original_saving=original_saving,
+        )
+
+        # Get distributions
+        dists = db.query(Distribution).filter(Distribution.user_id == user_uuid).order_by(Distribution.created_at.desc()).all()
+        dist_list: list[DistributionResponse] = []
+        for d in dists:
+            dist_list.append(DistributionResponse(
+                id=str(d.id),
+                user_id=str(d.user_id),
+                full_name=user.username if user else None,
+                amount=d.amount,
+                year=d.created_at.year
+            ))
+
+        return UserDistributionsResponse(user=user_resp, distributions=dist_list)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching user distributions and info: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/users/distributions", response_model=UserDistributionsResponse)
+async def get_user_distributions_by_identifier(username: str | None = None, phone_number: str | None = None, db: Session = Depends(get_db)):
+    """
+    Return user info and their distributions by `username` or `phone_number`.
+    Provide at least one of the query parameters.
+    """
+    try:
+        if not username and not phone_number:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide either username or phone_number")
+
+        user = None
+        if username:
+            user = db.query(User).filter(User.username == username).first()
+
+        if not user and phone_number:
+            user = db.query(User).filter(User.phone_number == phone_number).first()
+
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        user_uuid = user.id
+
+        # Calculate totals for user
+        total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == user_uuid).scalar() or 0.0
+        total_distributions = db.query(func.coalesce(func.sum(Distribution.amount), 0)).filter(Distribution.user_id == user_uuid).scalar() or 0.0
+        total_payloan_using_saving = db.query(func.coalesce(func.sum(PayLoanUsingSaving.amount), 0)).filter(PayLoanUsingSaving.user_id == user_uuid).scalar() or 0.0
+        original_saving = float(total_saving) - float(total_distributions) - float(total_payloan_using_saving)
+
+        user_resp = UserResponse(
+            id=str(user.id),
+            username=user.username,
+            email=user.email,
+            phone_number=user.phone_number,
+            total_saving=float(total_saving),
+            original_saving=original_saving,
+        )
+
+        # Get distributions
+        dists = db.query(Distribution).filter(Distribution.user_id == user_uuid).order_by(Distribution.created_at.desc()).all()
+        dist_list: list[DistributionResponse] = []
+        for d in dists:
+            dist_list.append(DistributionResponse(
+                id=str(d.id),
+                user_id=str(d.user_id),
+                full_name=user.username if user else None,
+                amount=d.amount,
+                year=d.created_at.year
+            ))
+
+        return UserDistributionsResponse(user=user_resp, distributions=dist_list)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching user distributions by identifier: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 

@@ -172,6 +172,7 @@ class DistributionResponse(BaseModel):
         from_attributes = True
 
 
+
 class DistributionUpdate(BaseModel):
     amount: float | None = None
     created_at: datetime | None = None
@@ -275,6 +276,15 @@ class UserResponse(BaseModel):
     total_saving: float = 0.0
     original_saving: float = 0.0
     profile_image_url: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+# Combined response: user + distributions
+class UserDistributionsResponse(BaseModel):
+    user: UserResponse
+    distributions: list[DistributionResponse]
 
     class Config:
         from_attributes = True

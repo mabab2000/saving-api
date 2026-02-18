@@ -105,6 +105,45 @@ async def list_all_payments(db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@router.get("/pay-loan-using-savings/search", response_model=list[PayLoanUsingSavingResponse])
+async def search_payments(username: str | None = None, phone_number: str | None = None, db: Session = Depends(get_db)):
+    """
+    Search payments by user `username` or `phone_number`. Provide at least one query parameter.
+    """
+    try:
+        if not username and not phone_number:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide either username or phone_number")
+
+        user = None
+        if username:
+            user = db.query(User).filter(User.username == username).first()
+
+        if not user and phone_number:
+            user = db.query(User).filter(User.phone_number == phone_number).first()
+
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        payments = db.query(PayLoanUsingSaving).filter(PayLoanUsingSaving.user_id == user.id).order_by(PayLoanUsingSaving.created_at.desc()).all()
+        resp = []
+        for p in payments:
+            resp.append(PayLoanUsingSavingResponse(
+                id=str(p.id),
+                user_id=str(p.user_id),
+                full_name=user.username if user else None,
+                amount=p.amount,
+                description=p.description,
+                created_at=p.created_at
+            ))
+        return resp
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching payments: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 @router.put("/pay-loan-using-saving/{payment_id}", response_model=PayLoanUsingSavingResponse)
 async def update_payment(payment_id: str, payload: PayLoanUsingSavingUpdate = Body(...), db: Session = Depends(get_db)):
     try:
