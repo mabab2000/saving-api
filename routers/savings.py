@@ -4,15 +4,50 @@ import logging
 import traceback
 import uuid
 
-from models import User, Saving
+from models import User, Saving, Distribution, Penalty, PayLoanUsingSaving
 from schemas import SavingCreate, SavingResponse, SavingSummary, SavingUpdate
 from fastapi import Body
 import datetime
 from database import get_db
 from fcm_utils import send_saving_notification
+from sms_utils import send_saving_sms_notification
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+def calculate_user_savings_summary(db: Session, user_id: uuid.UUID) -> tuple[float, float]:
+    """
+    Calculate total and actual savings for a user
+    
+    Args:
+        db: Database session
+        user_id: User UUID
+        
+    Returns:
+        Tuple of (total_savings, actual_savings)
+    """
+    # Calculate total savings
+    total_savings_records = db.query(Saving).filter(Saving.user_id == user_id).all()
+    total_savings = sum(saving.amount for saving in total_savings_records)
+    
+    # Calculate deductions
+    distributions = db.query(Distribution).filter(Distribution.user_id == user_id).all()
+    total_distributions = sum(dist.amount for dist in distributions)
+    
+    penalties = db.query(Penalty).filter(Penalty.user_id == user_id).all()
+    total_penalties = sum(penalty.amount for penalty in penalties)
+    
+    loan_payments = db.query(PayLoanUsingSaving).filter(PayLoanUsingSaving.user_id == user_id).all()
+    total_loan_payments = sum(payment.amount for payment in loan_payments)
+    
+    # Calculate actual savings (total - all deductions)
+    actual_savings = total_savings - total_distributions - total_penalties - total_loan_payments
+    
+    logger.info(f"User {user_id} - Total: {total_savings}, Distributions: {total_distributions}, "
+               f"Penalties: {total_penalties}, Loan payments: {total_loan_payments}, "
+               f"Actual: {actual_savings}")
+    
+    return total_savings, actual_savings
 
 @router.post("/saving", response_model=SavingResponse)
 async def create_saving(saving_data: SavingCreate, db: Session = Depends(get_db)):
@@ -64,6 +99,28 @@ async def create_saving(saving_data: SavingCreate, db: Session = Depends(get_db)
             except Exception as e:
                 logger.warning(f"Failed to send FCM notification: {str(e)}")
                 # Don't fail the saving creation if notification fails
+        
+        # Calculate total savings and actual savings for the user (including this new saving)
+        total_savings, actual_savings = calculate_user_savings_summary(db, user_uuid)
+        
+        # Send SMS notification if user has phone number
+        if user.phone_number:
+            try:
+                sms_sent = send_saving_sms_notification(
+                    phone_number=user.phone_number,
+                    user_name=user.username or "Customer",
+                    amount=db_saving.amount,
+                    total_savings=total_savings,
+                    actual_savings=actual_savings,
+                    saving_date=db_saving.created_at
+                )
+                if sms_sent:
+                    logger.info(f"SMS notification sent successfully for saving: {db_saving.id}")
+                else:
+                    logger.warning(f"SMS notification failed for saving: {db_saving.id}")
+            except Exception as e:
+                logger.warning(f"Failed to send SMS notification: {str(e)}")
+                # Don't fail the saving creation if SMS fails
         
         logger.info(f"Saving created successfully: {db_saving.id}")
         
