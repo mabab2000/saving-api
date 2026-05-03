@@ -258,7 +258,7 @@ def send_saving_sms_notification(
         
         # Create shorter message in Kinyarwanda with SAVING Update format
         message = (
-            f"SAVING Update ({day_date}): Muraho {user_name}! Ubwizigame bwawe bwa {formatted_date}: {amount:,.0f}Rwf. "
+            f"SAVING Update : Muraho {user_name}! Ubwizigame bwawe bwa {formatted_date}: {amount:,.0f}Rwf. "
             f"Yose hamwe ni: {total_savings:,.0f}Rwf. ariko usigaranyewe: {actual_savings:,.0f}Rwf."
         )
         
