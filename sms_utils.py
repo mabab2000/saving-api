@@ -256,11 +256,10 @@ def send_saving_sms_notification(
         formatted_date = saving_date.strftime("%B %Y")  # e.g., "May 2026"
         day_date = saving_date.strftime("%d/%m/%Y")  # e.g., "03/05/2026"
         
-        # Create message in Kinyarwanda with SAVING Update format based on date
+        # Create shorter message in Kinyarwanda with SAVING Update format
         message = (
-            f"SAVING Update ({day_date}):\nMuraho {user_name}! Ubwizigame bwawe bwa {formatted_date}: {amount:,.0f}Rwf. "
-            f"Yose hamwe ni: {total_savings:,.0f}Rwf. ariko usigaranyewe: {actual_savings:,.0f}Rwf. "
-            f"Ubunyangamugayo bwawe bwa {formatted_date} bwakiriwe ku itariki {day_date}."
+            f"SAVING Update ({day_date}): Muraho {user_name}! Ubwizigame bwawe bwa {formatted_date}: {amount:,.0f}Rwf. "
+            f"Yose hamwe ni: {total_savings:,.0f}Rwf. ariko usigaranyewe: {actual_savings:,.0f}Rwf."
         )
         
         logger.info(f"Sending saving notification SMS to {user_name}")
