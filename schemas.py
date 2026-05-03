@@ -63,6 +63,7 @@ class TokenWithUserInfo(BaseModel):
 class SavingCreate(BaseModel):
     user_id: str  # UUID as string
     amount: float = Field(..., gt=0, description="Amount must be greater than 0")
+    date: datetime = Field(default_factory=datetime.now, description="Date when the saving was made")
 
 class SavingResponse(BaseModel):
     id: str

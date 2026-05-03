@@ -73,10 +73,11 @@ async def create_saving(saving_data: SavingCreate, db: Session = Depends(get_db)
                 detail="User not found"
             )
         
-        # Create new saving
+        # Create new saving with custom date
         db_saving = Saving(
             user_id=user_uuid,
-            amount=saving_data.amount
+            amount=saving_data.amount,
+            created_at=saving_data.date
         )
         
         db.add(db_saving)
