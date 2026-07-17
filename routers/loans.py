@@ -447,7 +447,8 @@ async def update_loan(loan_id: str, payload: LoanUpdate = Body(...), db: Session
         if payload.issued_date is not None:
             loan.issued_date = payload.issued_date
         if payload.deadline is not None:
-            if payload.issued_date and payload.deadline <= payload.issued_date:
+            effective_issued = payload.issued_date if payload.issued_date is not None else loan.issued_date
+            if payload.deadline <= effective_issued:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deadline must be after issued date")
             loan.deadline = payload.deadline
 
