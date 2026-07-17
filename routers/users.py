@@ -400,7 +400,7 @@ async def get_home_info(user_id: str, db: Session = Depends(get_db)):
     HTTP endpoint for home dashboard information
     - image_preview_link
     - total_saving
-    - total_loan (only active loans considered)
+    - total_loan (most recently created loan amount minus its payments)
     - latest_saving_info (month:number, year:number, amount:number)
     """
     try:
@@ -434,21 +434,18 @@ async def get_home_info(user_id: str, db: Session = Depends(get_db)):
         # Calculate total savings
         total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == user_uuid).scalar() or 0.0
 
-        # Calculate total loans (only active loans)
-        total_loan_amount = db.query(func.coalesce(func.sum(Loan.amount), 0)).filter(
-            Loan.user_id == user_uuid,
-            Loan.status == "active"
-        ).scalar() or 0.0
+        # Calculate the balance of the user's most recently created loan only.
+        latest_loan = db.query(Loan).filter(
+            Loan.user_id == user_uuid
+        ).order_by(Loan.created_at.desc()).first()
 
-        # Sum payments only for those active loans
-        active_loan_rows = db.query(Loan.id).filter(Loan.user_id == user_uuid, Loan.status == "active").all()
-        active_loan_ids = [row[0] for row in active_loan_rows] if active_loan_rows else []
-
-        if active_loan_ids:
+        if latest_loan:
+            total_loan_amount = latest_loan.amount
             total_loan_payments = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
-                LoanPayment.loan_id.in_(active_loan_ids)
+                LoanPayment.loan_id == latest_loan.id
             ).scalar() or 0.0
         else:
+            total_loan_amount = 0.0
             total_loan_payments = 0.0
 
         current_loan = float(total_loan_amount) - float(total_loan_payments)
