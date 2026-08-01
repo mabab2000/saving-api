@@ -65,6 +65,14 @@ class LoanPayment(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class PayOnlyInterest(Base):
+    __tablename__ = "pay_only_interest"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    loan_id = Column(UUID(as_uuid=True), ForeignKey("loans.id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Distribution(Base):
     __tablename__ = "distributions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)

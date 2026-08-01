@@ -156,6 +156,21 @@ class LoanPaymentSummary(BaseModel):
     payments: list[LoanPaymentResponse]
 
 
+class PayOnlyInterestCreate(BaseModel):
+    loan_id: str
+    amount: float = Field(..., gt=0, description="Interest payment amount must be greater than 0")
+
+
+class PayOnlyInterestResponse(BaseModel):
+    id: str
+    loan_id: str
+    amount: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Distribution Schemas
 class DistributionCreate(BaseModel):
     user_id: str  # UUID as string

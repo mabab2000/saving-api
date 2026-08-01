@@ -22,6 +22,7 @@ try:
     from routers.users import router as users_router
     from routers.distributions import router as distributions_router
     from routers.pay_loan_using_saving import router as pay_loan_using_saving_router
+    from routers.pay_only_interest import router as pay_only_interest_router
     from routers.dashboard import router as dashboard_router
     from routers.stats_ws import router as stats_ws_router
     from routers.sms_test import router as sms_test_router
@@ -67,6 +68,7 @@ app.include_router(penalties_router, prefix="/api", tags=["Penalties"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
 app.include_router(distributions_router, prefix="/api", tags=["Distributions"])
 app.include_router(pay_loan_using_saving_router, prefix="/api", tags=["PayLoanUsingSaving"])
+app.include_router(pay_only_interest_router, prefix="/api", tags=["PayOnlyInterest"])
 app.include_router(dashboard_router, prefix="/api", tags=["Dashboard"])
 app.include_router(sms_test_router, prefix="/api", tags=["SMS Test"])
 app.include_router(icon_router, prefix="/static", tags=["Static"])
