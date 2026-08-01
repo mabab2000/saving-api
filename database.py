@@ -31,7 +31,7 @@ if not DATABASE_URL:
     safe_pass = quote_plus(db_pass)
     DATABASE_URL = f"postgresql://{db_user}:{safe_pass}@{db_host}:{db_port}/{db_name}"
 
-logger.info(f"Connecting to database: {DATABASE_URL[:40]}...")
+logger.info("Connecting to database")
 
 try:
     # AWS RDS connection settings with extended timeout and SSL
