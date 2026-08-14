@@ -297,6 +297,11 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class UserListResponse(UserResponse):
+    active_loan: float = 0.0
+    saving_minus_active_loan: float = 0.0
+
+
 # Combined response: user + distributions
 class UserDistributionsResponse(BaseModel):
     user: UserResponse

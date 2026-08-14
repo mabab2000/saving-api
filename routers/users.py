@@ -10,7 +10,7 @@ import base64
 from datetime import datetime
 
 from models import User, ProfilePhoto, Saving, Loan, LoanPayment, Distribution, PayLoanUsingSaving
-from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse, DistributionResponse, UserDistributionsResponse
+from schemas import ProfilePhotoResponse, HomeResponse, LatestSavingInfo, UserResponse, UserListResponse, UserUpdate, MemberResponse, ProfilePhotoURLResponse, DistributionResponse, UserDistributionsResponse
 from database import get_db
 from .auth import get_password_hash
 from supabase_utils import upload_image_to_supabase, delete_image_from_supabase
@@ -624,11 +624,35 @@ async def get_user_distributions_by_identifier(username: str | None = None, phon
 
 
 # Admin: list all users
-@router.get("/users", response_model=list[UserResponse])
+@router.get("/users", response_model=list[UserListResponse])
 async def list_users(db: Session = Depends(get_db)):
     try:
         users = db.query(User).all()
-        result: list[UserResponse] = []
+
+        # Fetch every active loan and its payment total at once. Calculating the
+        # remainder per loan prevents an overpaid loan from reducing another
+        # active loan's outstanding balance.
+        payment_totals = db.query(
+            LoanPayment.loan_id.label("loan_id"),
+            func.coalesce(func.sum(LoanPayment.amount), 0).label("total_paid"),
+        ).group_by(LoanPayment.loan_id).subquery()
+
+        active_loans = db.query(
+            Loan.user_id,
+            Loan.amount,
+            func.coalesce(payment_totals.c.total_paid, 0).label("total_paid"),
+        ).outerjoin(
+            payment_totals, payment_totals.c.loan_id == Loan.id
+        ).filter(
+            Loan.status == "active"
+        ).all()
+
+        active_loan_by_user: dict[object, float] = {}
+        for user_id, loan_amount, total_paid in active_loans:
+            remaining_balance = max(float(loan_amount) - float(total_paid), 0.0)
+            active_loan_by_user[user_id] = active_loan_by_user.get(user_id, 0.0) + remaining_balance
+
+        result: list[UserListResponse] = []
         for u in users:
             # Calculate total saving for the user
             total_saving = db.query(func.coalesce(func.sum(Saving.amount), 0)).filter(Saving.user_id == u.id).scalar() or 0.0
@@ -637,15 +661,18 @@ async def list_users(db: Session = Depends(get_db)):
             total_payloan_using_saving = db.query(func.coalesce(func.sum(PayLoanUsingSaving.amount), 0)).filter(PayLoanUsingSaving.user_id == u.id).scalar() or 0.0
 
             original_saving = float(total_saving) - float(total_distributions) - float(total_payloan_using_saving)
+            active_loan = active_loan_by_user.get(u.id, 0.0)
 
             result.append(
-                UserResponse(
+                UserListResponse(
                     id=str(u.id),
                     username=u.username,
                     email=u.email,
                     phone_number=u.phone_number,
                     total_saving=float(total_saving),
                     original_saving=original_saving,
+                    active_loan=active_loan,
+                    saving_minus_active_loan=original_saving - active_loan,
                 )
             )
 
