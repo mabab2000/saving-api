@@ -5,7 +5,7 @@ import logging
 import traceback
 import uuid
 
-from models import User, Loan, LoanPayment
+from models import User, Loan, LoanPayment, PayOnlyInterest
 from schemas import (
     LoanCreate,
     LoanResponse,
@@ -21,6 +21,20 @@ from fastapi import Body
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def get_interest_paid_by_loan(db: Session, loan_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
+    if not loan_ids:
+        return {}
+
+    totals = (
+        db.query(PayOnlyInterest.loan_id, func.sum(PayOnlyInterest.amount))
+        .filter(PayOnlyInterest.loan_id.in_(loan_ids))
+        .group_by(PayOnlyInterest.loan_id)
+        .all()
+    )
+    return {loan_id: float(amount) for loan_id, amount in totals}
+
 
 @router.post("/loan", response_model=LoanResponse)
 async def create_loan(loan_data: LoanCreate, db: Session = Depends(get_db)):
@@ -91,6 +105,7 @@ async def create_loan(loan_data: LoanCreate, db: Session = Depends(get_db)):
             deadline=db_loan.deadline,
             status=db_loan.status,
             total_amount_paid=0.0,
+            total_interest_paid=0.0,
             created_at=db_loan.created_at,
             updated_at=db_loan.updated_at,
             username=user.username if user else None,
@@ -168,13 +183,13 @@ async def get_user_loans(user_id: str, db: Session = Depends(get_db)):
         # Calculate totals
         total_amount = sum(loan.amount for loan in loans)
         total_loan = len(loans)
+        interest_paid_by_loan = get_interest_paid_by_loan(db, [loan.id for loan in loans])
         
         logger.info(f"Found {total_loan} loans for user: {user_id} (Total: {total_amount})")
         
         loan_responses = []
         for loan in loans:
             # Calculate total amount paid for this loan
-            from sqlalchemy import func
             total_paid = db.query(func.sum(LoanPayment.amount)).filter(LoanPayment.loan_id == loan.id).scalar() or 0.0
             
             loan_responses.append(LoanResponse(
@@ -185,6 +200,7 @@ async def get_user_loans(user_id: str, db: Session = Depends(get_db)):
                 deadline=loan.deadline,
                 status=loan.status,
                 total_amount_paid=float(total_paid),
+                total_interest_paid=interest_paid_by_loan.get(loan.id, 0.0),
                 created_at=loan.created_at,
                 updated_at=loan.updated_at,
                 username=user.username if user else None,
@@ -392,6 +408,7 @@ async def list_all_loans(db: Session = Depends(get_db)):
         loans = db.query(Loan).order_by(Loan.created_at.desc()).all()
         total_amount = sum(loan.amount for loan in loans)
         total_loan = len(loans)
+        interest_paid_by_loan = get_interest_paid_by_loan(db, [loan.id for loan in loans])
         loan_responses = []
         for loan in loans:
             try:
@@ -421,6 +438,7 @@ async def list_all_loans(db: Session = Depends(get_db)):
                     phone_number=phone,
                     status=loan.status,
                     total_amount_paid=total_paid,
+                    total_interest_paid=interest_paid_by_loan.get(loan.id, 0.0),
                 )
             )
         return LoanSummary(total_amount=total_amount, total_loan=total_loan, loans=loan_responses)
@@ -459,6 +477,7 @@ async def update_loan(loan_id: str, payload: LoanUpdate = Body(...), db: Session
         total_paid = db.query(func.coalesce(func.sum(LoanPayment.amount), 0)).filter(
             LoanPayment.loan_id == loan.id
         ).scalar()
+        total_interest_paid = get_interest_paid_by_loan(db, [loan.id]).get(loan.id, 0.0)
 
         return LoanResponse(
             id=str(loan.id),
@@ -470,6 +489,7 @@ async def update_loan(loan_id: str, payload: LoanUpdate = Body(...), db: Session
             updated_at=loan.updated_at,
             status=loan.status,
             total_amount_paid=total_paid,
+            total_interest_paid=total_interest_paid,
         )
     except HTTPException:
         raise

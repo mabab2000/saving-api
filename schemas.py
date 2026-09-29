@@ -105,6 +105,7 @@ class LoanResponse(BaseModel):
     deadline: datetime
     status: str = "active"
     total_amount_paid: float = 0.0
+    total_interest_paid: float = Field(default=0.0, description="Total interest-only payments recorded for this loan")
     created_at: datetime
     updated_at: datetime
     username: str | None = None
